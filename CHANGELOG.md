@@ -186,4 +186,32 @@ Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
 - Automatic privilege checking
 - Proper cleanup on installation failure
 
-**Next**: Continue with Stage 2-C: System Tray
+### Stage 2-C: System Tray - COMPLETE ✅
+
+**2-C: System Tray - COMPLETE**
+- **File**: `internal/tray/tray.go`
+- **Dependency**: `github.com/getlantern/systray`
+- **Platform Support**:
+  - ✅ Windows system tray
+  - ✅ macOS menu bar
+  - ✅ Linux system tray
+- **Features**:
+  - ✅ Tray icon with tooltip
+  - ✅ Menu items: Open Dashboard, Settings, Quit
+  - ✅ Platform-specific menu conventions (About on macOS)
+  - ✅ Startup notifications
+  - ✅ Integration with application lifecycle
+- **Menu Items**:
+  - Open Dashboard: Opens web interface in browser
+  - Settings: Opens settings (stubbed for now)
+  - Quit: Gracefully shuts down application
+  - About (macOS): Shows about dialog
+
+**Implementation Details**:
+- Uses `github.com/getlantern/systray` for cross-platform tray support
+- Platform-specific icon handling
+- Startup notifications for each platform
+- Proper integration with application shutdown
+- Callback architecture for menu actions
+
+**Next**: Continue with Stage 2-D: Setup Wizard
