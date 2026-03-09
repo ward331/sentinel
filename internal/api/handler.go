@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/openclaw/sentinel-backend/internal/alert"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/infrastructure"
@@ -603,4 +604,43 @@ func (h *Handler) GetUnhealthyProviders(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// Router returns a configured gorilla/mux router with all API routes
+func (h *Handler) Router() *mux.Router {
+	r := mux.NewRouter()
+	
+	// Event routes
+	r.HandleFunc("/api/events", h.ListEvents).Methods("GET")
+	r.HandleFunc("/api/events", h.CreateEvent).Methods("POST")
+	r.HandleFunc("/api/events/{id}", h.GetEvent).Methods("GET")
+	// Note: UpdateEvent and DeleteEvent methods not implemented yet
+	
+	// Stream routes
+	r.HandleFunc("/api/events/stream", h.EventStream).Methods("GET")
+	
+	// Health routes
+	r.HandleFunc("/api/health", h.HealthCheck).Methods("GET")
+	r.HandleFunc("/api/providers/healthy", h.GetHealthyProviders).Methods("GET")
+	r.HandleFunc("/api/providers/unhealthy", h.GetUnhealthyProviders).Methods("GET")
+	
+	// Alert routes
+	r.HandleFunc("/api/alerts/rules", h.ListAlertRules).Methods("GET")
+	r.HandleFunc("/api/alerts/rules", h.CreateAlertRule).Methods("POST")
+	// Note: GetAlertRule, UpdateAlertRule, DeleteAlertRule methods not implemented yet
+	
+	// Metrics routes
+	r.HandleFunc("/api/metrics", h.GetMetrics).Methods("GET")
+	
+	// Provider health routes
+	r.HandleFunc("/api/providers/health", h.GetProviderHealth).Methods("GET")
+	r.HandleFunc("/api/providers/stats", h.GetProviderStats).Methods("GET")
+	
+	// Event log routes (if available)
+	if h.eventLog != nil {
+		r.HandleFunc("/api/events/log/info", h.GetEventLogInfo).Methods("GET")
+		r.HandleFunc("/api/events/log/rotate", h.RotateEventLog).Methods("POST")
+	}
+	
+	return r
 }

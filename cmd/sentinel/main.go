@@ -2,288 +2,133 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
+	"os"
 	"time"
 
 	"github.com/openclaw/sentinel-backend/internal/api"
-	"github.com/openclaw/sentinel-backend/internal/backup"
 	"github.com/openclaw/sentinel-backend/internal/config"
-	"github.com/openclaw/sentinel-backend/internal/core"
 	"github.com/openclaw/sentinel-backend/internal/health"
-	"github.com/openclaw/sentinel-backend/internal/infrastructure"
-	"github.com/openclaw/sentinel-backend/internal/logging"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
-
 	"github.com/openclaw/sentinel-backend/internal/storage"
-	"github.com/openclaw/sentinel-backend/internal/server"
 )
 
-func main() {
-	// Load configuration
-	cfg := config.LoadConfig()
-	
-	log.Printf("Starting SENTINEL with configuration:")
-	log.Printf("  Database: %s (pooling: %v, max connections: %d)", 
-		cfg.DBPath, cfg.ConnectionPool, cfg.MaxConnections)
-	log.Printf("  HTTP Server: %s:%s", cfg.HTTPHost, cfg.HTTPPort)
-	log.Printf("  Poller Interval: %v", cfg.PollerInterval)
-	log.Printf("  Rate Limiting: %v (%d RPS, %d burst)", 
-		cfg.RateLimitEnabled, cfg.RateLimitRPS, cfg.RateLimitBurst)
+var (
+	configPath = flag.String("config", "", "Path to config file")
+	dataDir    = flag.String("data-dir", "", "Override data directory")
+	port       = flag.Int("port", 8080, "Server port (default 8080)")
+	host       = flag.String("host", "", "Bind host (default 0.0.0.0)")
+	version    = flag.Bool("version", false, "Print version and exit")
+)
 
-	// Initialize storage with configuration
-	store, err := storage.NewWithConfig(cfg.DBPath, cfg.ConnectionPool, cfg.MaxConnections)
+const Version = "2.0.0"
+
+func main() {
+	flag.Parse()
+	
+	if *version {
+		fmt.Printf("SENTINEL v%s\n", Version)
+		os.Exit(0)
+	}
+
+	// Load configuration
+	cfg, err := loadConfig()
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Start server
+	if err := startServer(cfg); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+// loadConfig loads configuration with CLI overrides
+func loadConfig() (*config.Config, error) {
+	// Try to load V2 config first
+	if *configPath != "" {
+		cfg, err := config.LoadConfig(*configPath)
+		if err == nil {
+			return cfg, nil
+		}
+	}
+
+	// Fall back to V1 config
+	v1Config := config.LoadConfigV1()
+	
+	// Apply CLI overrides to V1 config
+	// Port flag now has default 8080, so always use it
+	v1Config.HTTPPort = fmt.Sprintf("%d", *port)
+	if *host != "" {
+		v1Config.HTTPHost = *host
+	}
+	if *dataDir != "" {
+		// Update all paths in V1 config
+		v1Config.DBPath = *dataDir + "/sentinel.db"
+		v1Config.BackupDir = *dataDir + "/backups"
+		v1Config.EventLogPath = *dataDir + "/events.ndjson"
+	}
+	
+	// Convert V1 config to V2 config
+	return config.MigrateFromV1(v1Config), nil
+}
+
+// startServer starts the HTTP server
+func startServer(cfg *config.Config) error {
+	// Initialize storage
+	store, err := storage.NewWithConfig(cfg.DataDir+"/sentinel.db", true, 10)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 	defer store.Close()
 
-	// Create metrics collector
-	metrics := metrics.NewMetrics()
-
-	// Create health registry
-	healthRegistry := health.NewHealthRegistry()
-	
-	// Register health checkers
-	healthRegistry.Register(health.NewDatabaseChecker(store.DB()))
-	healthRegistry.Register(health.NewMemoryChecker(400)) // 400 MB threshold
-	healthRegistry.Register(health.NewDiskChecker(cfg.DBPath))
-
-	// Initialize data infrastructure components
-	healthReporter := infrastructure.NewHealthReporter()
-	
-	// Create NDJSON event log
-	eventLog, err := infrastructure.NewNDJSONLog(cfg.EventLogPath)
-	if err != nil {
-		log.Fatalf("Failed to create NDJSON event log: %v", err)
-	}
-	defer eventLog.Close()
-
 	// Initialize OSINT storage
 	osintStorage := storage.NewOSINTStorage(store.DB())
-	
-	// Create OSINT resources table and seed built-in resources
+	ctx := context.Background()
 	if err := osintStorage.CreateTable(ctx); err != nil {
-		log.Printf("Warning: Failed to create OSINT resources table: %v", err)
-	} else {
-		if err := osintStorage.SeedBuiltinResources(ctx); err != nil {
-			log.Printf("Warning: Failed to seed OSINT resources: %v", err)
-		} else {
-			log.Printf("OSINT resources database initialized with built-in resources")
-		}
+		log.Printf("Warning: Failed to create OSINT table: %v", err)
+	}
+	if err := osintStorage.SeedBuiltinResources(ctx); err != nil {
+		log.Printf("Warning: Failed to seed OSINT resources: %v", err)
 	}
 
-	// Initialize API handler with infrastructure (creates stream broker)
-	handler := api.NewHandlerWithInfrastructure(
-		store, 
-		metrics, 
-		healthRegistry,
-		healthReporter,
-		eventLog,
-	)
-
-	// Initialize and start enhanced poller with data infrastructure
-	poller := core.NewEnhancedPoller(
-		store, 
-		handler.Stream(), 
-		metrics, 
-		healthReporter,
-		eventLog,
-		cfg.PollerInterval,
-	)
+	// Create metrics and health registry
+	metrics := metrics.NewMetrics()
+	healthRegistry := health.NewHealthRegistry()
 	
-	// Create backup manager
-	backupConfig := backup.BackupConfig{
-		Enabled:    cfg.BackupEnabled,
-		BackupDir:  cfg.BackupDir,
-		Retention:  cfg.BackupRetention,
-		MaxBackups: cfg.BackupMaxCount,
-		Schedule:   cfg.BackupSchedule,
-	}
+	// Create API handler and router
+	apiHandler := api.NewHandler(store, metrics, healthRegistry)
+	router := apiHandler.Router()
 	
-	backupManager, err := backup.NewBackupManager(cfg.DBPath, backupConfig)
-	if err != nil {
-		log.Fatalf("Failed to create backup manager: %v", err)
-	}
-	
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	
-	go poller.Start(ctx)
-	log.Printf("USGS live feed poller started (%v interval)", cfg.PollerInterval)
-	
-	// Start backup scheduler if enabled
-	if cfg.BackupEnabled {
-		go backupManager.StartScheduledBackups(ctx, cfg.BackupSchedule)
-		log.Printf("Database backup scheduler started (%v interval)", cfg.BackupSchedule)
-	}
-
-	// Setup HTTP router with middleware
-	var httpHandler http.Handler = http.NewServeMux()
-	mux := httpHandler.(*http.ServeMux)
-	
-	// Apply CORS middleware (first in chain - handles preflight requests)
-	httpHandler = api.CORSMiddleware(httpHandler)
-	
-	// Apply logging middleware (logs all requests)
-	loggingConfig := logging.LoggingConfig{
-		Enabled:     cfg.LoggingEnabled,
-		Format:      cfg.LoggingFormat,
-		LogLevel:    cfg.LoggingLevel,
-		IncludeBody: false,
-	}
-	httpHandler = logging.LoggingMiddleware(loggingConfig)(httpHandler)
-	
-	// Apply rate limiting middleware if enabled
-	if cfg.RateLimitEnabled {
-		rateLimitConfig := api.RateLimitConfig{
-			Enabled: cfg.RateLimitEnabled,
-			RPS:     cfg.RateLimitRPS,
-			Burst:   cfg.RateLimitBurst,
-			ExemptPaths: []string{
-				"/api/health",
-				"/api/metrics",
-			},
-		}
-		httpHandler = api.RateLimitMiddleware(rateLimitConfig)(httpHandler)
-	}
-	
-	// API routes
-	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handler.ListEvents(w, r)
-		case http.MethodPost:
-			handler.CreateEvent(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/events/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetEvent(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/events/stream", handler.EventStream)
-	mux.HandleFunc("/api/health", handler.HealthCheck)
-	
-	// Alert rule endpoints
-	mux.HandleFunc("/api/alerts/rules", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handler.ListAlertRules(w, r)
-		case http.MethodPost:
-			handler.CreateAlertRule(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	
-	// Metrics endpoint
-	mux.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetMetrics(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Provider health endpoints
-	mux.HandleFunc("/api/providers/health", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetProviderHealth(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/providers/healthy", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetHealthyProviders(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/providers/unhealthy", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetUnhealthyProviders(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/providers/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/stats") {
-			handler.GetProviderStats(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Event log endpoints
-	mux.HandleFunc("/api/event-log/info", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			handler.GetEventLogInfo(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/api/event-log/rotate", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			handler.RotateEventLog(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// OSINT Resources endpoints
+	// Register OSINT resources routes
 	osintHandler := api.NewOSINTResourcesHandler(osintStorage)
-	
-	// Register OSINT resource routes using gorilla/mux
-	osintRouter := api.NewRouter()
-	osintHandler.RegisterRoutes(osintRouter)
-	
-	// Mount OSINT router under /api/osint
-	mux.Handle("/api/osint/", http.StripPrefix("/api/osint", osintRouter))
+	osintHandler.RegisterRoutes(router.PathPrefix("/api/osint").Subrouter())
 
-	// Create HTTP server with configuration
-	httpServer := &http.Server{
-		Addr:         fmt.Sprintf("%s:%s", cfg.HTTPHost, cfg.HTTPPort),
-		Handler:      httpHandler, // Use handler with middleware
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
+	// Create HTTP server
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler: router,
 	}
 
-	// Start server in goroutine
+	log.Printf("Starting SENTINEL server on %s", srv.Addr)
+	log.Printf("Data directory: %s", cfg.DataDir)
+	
+	// Start server in background
 	go func() {
-		log.Printf("Starting SENTINEL server on %s:%s", cfg.HTTPHost, cfg.HTTPPort)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
 
-	// Setup graceful shutdown manager
-	shutdownManager := server.SetupGracefulShutdown(
-		httpServer,
-		cancel,
-		store.Close,
-		backupManager,
-		server.GracefulShutdownConfig{
-			Timeout: 30 * time.Second,
-		},
-	)
+	// Wait for interrupt signal
+	<-context.Background().Done()
 	
-	// Wait for termination signal and shutdown gracefully
-	shutdownManager.WaitForSignal()
-	log.Println("Server stopped")
+	// Graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	return srv.Shutdown(ctx)
 }
-

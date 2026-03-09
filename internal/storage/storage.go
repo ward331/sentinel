@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +26,12 @@ func New(dbPath string) (*Storage, error) {
 
 // NewWithConfig creates a new Storage instance with configuration
 func NewWithConfig(dbPath string, usePool bool, maxConnections int) (*Storage, error) {
+	// Create directory for database if it doesn't exist
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create database directory %s: %w", dbDir, err)
+	}
+	
 	if usePool && maxConnections > 1 {
 		// Use optimized storage with connection pooling
 		optStorage, err := NewOptimizedStorage(dbPath)

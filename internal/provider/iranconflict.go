@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/openclaw/sentinel-backend/internal/model"
@@ -78,35 +77,35 @@ func (p *IranConflictProvider) waveToEvent(wave *WaveData) *model.Event {
 		Magnitude: p.calculateMagnitude(wave),
 		Category:  "conflict",
 		Severity:  severity,
-		Metadata: map[string]interface{}{
-			"wave_number":        wave.WaveNumber,
+		Metadata: map[string]string{
+			"wave_number":        fmt.Sprintf("%d", wave.WaveNumber),
 			"operation_name":     wave.OperationName,
 			"weapon_type":        wave.WeaponType,
 			"target_type":        wave.TargetType,
-			"interception_rate":  wave.InterceptionRate,
+			"interception_rate":  fmt.Sprintf("%.1f", wave.InterceptionRate),
 			"impact_assessment":  wave.ImpactAssessment,
-			"total_weapons":      wave.TotalWeapons,
-			"targets_destroyed":  wave.TargetsDestroyed,
+			"total_weapons":      fmt.Sprintf("%d", wave.TotalWeapons),
+			"targets_destroyed":  fmt.Sprintf("%d", wave.TargetsDestroyed),
 			"alert_tier":         "TIER 3",
 			"data_source":        "Iran-Israel-War-2026-OSINT-Data",
 			"conflict_region":    "Middle East",
-			"primary_actors":     []string{"Iran", "Israel"},
+			"primary_actors":     "Iran; Israel",
 		},
 		Badges: []model.Badge{
 			{
-				Type:  "source",
-				Label: "OSINT Conflict Data",
-				Color: "#8B0000", // Dark red
+				Type:      model.BadgeTypeSource,
+				Label:     "OSINT Conflict Data",
+				Timestamp: time.Now().UTC(),
 			},
 			{
-				Type:  "precision",
-				Label: "Exact",
-				Color: "#006400", // Dark green
+				Type:      model.BadgeTypePrecision,
+				Label:     "Exact",
+				Timestamp: time.Now().UTC(),
 			},
 			{
-				Type:  "freshness",
-				Label: "Real-time",
-				Color: "#1E90FF", // Dodger blue
+				Type:      model.BadgeTypeFreshness,
+				Label:     "Real-time",
+				Timestamp: time.Now().UTC(),
 			},
 		},
 	}

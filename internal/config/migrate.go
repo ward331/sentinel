@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -10,16 +11,21 @@ func MigrateFromV1(oldConfig *ConfigV1) *Config {
 	v2Config := DefaultConfig()
 	
 	// Migrate basic settings
-	v2Config.DataDir = GetDefaultDataDir()
+	// Use V1 data directory if it exists, otherwise use V2 default
+	if oldConfig.DBPath != "" {
+		v2Config.DataDir = filepath.Dir(oldConfig.DBPath)
+	} else {
+		v2Config.DataDir = GetDefaultDataDir()
+	}
 	
 	// Migrate server settings
 	v2Config.Server.Port = 8080 // Default V1 port
 	if oldConfig.HTTPPort != "" {
-		// Try to parse port from old config
-		port := 8080
-		// Simple conversion - in real implementation, parse string to int
-		// For now, use default
-		v2Config.Server.Port = port
+		// Parse port from old config
+		var port int
+		if _, err := fmt.Sscanf(oldConfig.HTTPPort, "%d", &port); err == nil && port > 0 {
+			v2Config.Server.Port = port
+		}
 	}
 	v2Config.Server.Host = oldConfig.HTTPHost
 	

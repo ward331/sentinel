@@ -2,10 +2,7 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -64,7 +61,7 @@ func (p *OpenSkyEnhancedProvider) Fetch(ctx context.Context) ([]*model.Event, er
 }
 
 // stateToEvent converts a flight state to an event with aircraft identification
-func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyState) *model.Event {
+func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyEnhancedState) *model.Event {
 	if state == nil || !state.OnGround {
 		return nil
 	}
@@ -91,33 +88,32 @@ func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyState) *model.Event
 		Magnitude: p.calculateMagnitude(state),
 		Category:  category,
 		Severity:  severity,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]string{
 			"icao24":        state.Icao24,
 			"callsign":      state.Callsign,
-			"altitude":      state.Altitude,
-			"velocity":      state.Velocity,
-			"heading":       state.Heading,
-			"vertical_rate": state.VerticalRate,
-			"on_ground":     state.OnGround,
-			"aircraft_info": aircraftInfo,
+			"altitude":      fmt.Sprintf("%.0f", state.Altitude),
+			"velocity":      fmt.Sprintf("%.1f", state.Velocity),
+			"heading":       fmt.Sprintf("%.1f", state.Heading),
+			"vertical_rate": fmt.Sprintf("%.1f", state.VerticalRate),
+			"on_ground":     fmt.Sprintf("%v", state.OnGround),
 			"data_source":   "OpenSky Network",
 			"update_frequency": "real-time",
 		},
 		Badges: []model.Badge{
 			{
-				Type:  "source",
-				Label: "ADS-B Flight Data",
-				Color: "#FFD700", // Gold
+				Type:      model.BadgeTypeSource,
+				Label:     "ADS-B Flight Data",
+				Timestamp: time.Now().UTC(),
 			},
 			{
-				Type:  "precision",
-				Label: "Exact",
-				Color: "#006400", // Dark green
+				Type:      model.BadgeTypePrecision,
+				Label:     "Exact",
+				Timestamp: time.Now().UTC(),
 			},
 			{
-				Type:  "freshness",
-				Label: "Real-time",
-				Color: "#1E90FF", // Dodger blue
+				Type:      model.BadgeTypeFreshness,
+				Label:     "Real-time",
+				Timestamp: time.Now().UTC(),
 			},
 		},
 	}
@@ -125,9 +121,9 @@ func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyState) *model.Event
 	// Add military badge if aircraft is military
 	if military, ok := aircraftInfo["military"].(bool); ok && military {
 		event.Badges = append(event.Badges, model.Badge{
-			Type:  "military",
-			Label: "Military",
-			Color: "#DC143C", // Crimson
+			Type:      "military",
+			Label:     "Military",
+			Timestamp: time.Now().UTC(),
 		})
 		event.Severity = model.SeverityHigh // Military aircraft get higher severity
 	}
@@ -164,7 +160,7 @@ func (p *OpenSkyEnhancedProvider) determineCategoryAndSeverity(aircraftInfo map[
 }
 
 // calculateMagnitude calculates event magnitude
-func (p *OpenSkyEnhancedProvider) calculateMagnitude(state *OpenSkyState) float64 {
+func (p *OpenSkyEnhancedProvider) calculateMagnitude(state *OpenSkyEnhancedState) float64 {
 	// Base magnitude for flight events
 	magnitude := 2.0
 
@@ -187,7 +183,7 @@ func (p *OpenSkyEnhancedProvider) calculateMagnitude(state *OpenSkyState) float6
 }
 
 // generateDescription generates event description
-func (p *OpenSkyEnhancedProvider) generateDescription(state *OpenSkyState, aircraftInfo map[string]interface{}) string {
+func (p *OpenSkyEnhancedProvider) generateDescription(state *OpenSkyEnhancedState, aircraftInfo map[string]interface{}) string {
 	var desc strings.Builder
 	
 	desc.WriteString("Flight Tracking Data\n")
@@ -211,7 +207,7 @@ func (p *OpenSkyEnhancedProvider) generateDescription(state *OpenSkyState, aircr
 			desc.WriteString(fmt.Sprintf("Type: %s\n", typeCode))
 		}
 	} else {
-		desc.WriteString(fmt.Sprintf("Aircraft: Unknown (%s)\n", state.ICAO24))
+		desc.WriteString(fmt.Sprintf("Aircraft: Unknown (%s)\n", state.Icao24))
 	}
 	
 	// Flight information
@@ -239,15 +235,8 @@ func (p *OpenSkyEnhancedProvider) generateDescription(state *OpenSkyState, aircr
 	return desc.String()
 }
 
-// fetchStatesData fetches states data from OpenSky API
-func (p *OpenSkyEnhancedProvider) fetchStatesData(ctx context.Context) ([]*OpenSkyState, error) {
-	// For now, return empty slice as placeholder
-	// In production, this would call the OpenSky API
-	return []*OpenSkyState{}, nil
-}
-
-// OpenSkyState represents a flight state from OpenSky
-type OpenSkyState struct {
+// OpenSkyEnhancedState represents a flight state from OpenSky
+type OpenSkyEnhancedState struct {
 	Icao24       string  `json:"icao24"`
 	Callsign     string  `json:"callsign"`
 	Latitude     float64 `json:"latitude"`
@@ -257,6 +246,13 @@ type OpenSkyState struct {
 	Heading      float64 `json:"heading"`
 	VerticalRate float64 `json:"vertical_rate"`
 	OnGround     bool    `json:"on_ground"`
+}
+
+// fetchStatesData fetches states data from OpenSky API
+func (p *OpenSkyEnhancedProvider) fetchStatesData(ctx context.Context) ([]*OpenSkyEnhancedState, error) {
+	// For now, return empty slice as placeholder
+	// In production, this would call the OpenSky API
+	return []*OpenSkyEnhancedState{}, nil
 }
 
 // InitializeAircraftDatabase initializes and returns the aircraft database
