@@ -55,11 +55,11 @@ func getDefaultDataDir() string {
 	return "/tmp/sentinel-data"
 }
 
-// DefaultConfig returns default configuration
-func DefaultConfig() *Config {
+// DefaultConfigV1 returns default V1 configuration
+func DefaultConfigV1() *ConfigV1 {
 	dataDir := getDefaultDataDir()
 	
-	return &Config{
+	return &ConfigV1{
 		DBPath:          filepath.Join(dataDir, "sentinel.db"),
 		MaxConnections:  5,
 		ConnectionPool:  true,
@@ -86,7 +86,7 @@ func DefaultConfig() *Config {
 }
 
 // LoadFromEnv loads configuration from environment variables
-func (c *Config) LoadFromEnv() {
+func (c *ConfigV1) LoadFromEnv() {
 	// Database
 	if val := os.Getenv("SENTINEL_DB_PATH"); val != "" {
 		c.DBPath = val
@@ -192,9 +192,9 @@ func (c *Config) LoadFromEnv() {
 	}
 }
 
-// LoadConfig loads configuration with defaults and environment overrides
-func LoadConfig() *Config {
-	config := DefaultConfig()
+// LoadConfigV1 loads V1 configuration with defaults and environment overrides
+func LoadConfigV1() *ConfigV1 {
+	config := DefaultConfigV1()
 	config.LoadFromEnv()
 	return config
 }

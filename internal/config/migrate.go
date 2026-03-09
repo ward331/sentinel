@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"time"
 )
 
 // MigrateFromV1 migrates from V1 config system to V2
@@ -62,75 +61,12 @@ func MigrateFromV1(oldConfig *ConfigV1) *Config {
 	return v2Config
 }
 
-// ConfigV1 represents the old V1 configuration structure
-type ConfigV1 struct {
-	// Database
-	DBPath          string
-	MaxConnections  int
-	ConnectionPool  bool
-	
-	// HTTP Server
-	HTTPHost        string
-	HTTPPort        string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	
-	// Poller
-	PollerInterval  time.Duration
-	
-	// Rate Limiting
-	RateLimitEnabled bool
-	RateLimitRPS     int
-	RateLimitBurst   int
-	
-	// Logging
-	LoggingEnabled bool
-	LoggingFormat  string
-	LoggingLevel   string
-	
-	// Alerting
-	AlertWebhookTimeout time.Duration
-	
-	// Backup
-	BackupEnabled   bool
-	BackupDir       string
-	BackupRetention time.Duration
-	BackupMaxCount  int
-	BackupSchedule  time.Duration
-	
-	// Data Infrastructure
-	EventLogPath string
-}
+
 
 // LoadV1Config loads the old V1 configuration
 func LoadV1Config() *ConfigV1 {
-	// This would load from environment variables as V1 did
-	// For now, return a default V1 config
-	return &ConfigV1{
-		DBPath:          "/tmp/sentinel.db",
-		MaxConnections:  5,
-		ConnectionPool:  true,
-		HTTPHost:        "0.0.0.0",
-		HTTPPort:        "8080",
-		ReadTimeout:     10 * time.Second,
-		WriteTimeout:    10 * time.Second,
-		IdleTimeout:     60 * time.Second,
-		PollerInterval:  60 * time.Second,
-		RateLimitEnabled: false,
-		RateLimitRPS:    100,
-		RateLimitBurst:  200,
-		LoggingEnabled:  true,
-		LoggingFormat:   "text",
-		LoggingLevel:    "info",
-		AlertWebhookTimeout: 10 * time.Second,
-		BackupEnabled:   true,
-		BackupDir:       "/tmp/sentinel-backups",
-		BackupRetention: 7 * 24 * time.Hour,
-		BackupMaxCount:  10,
-		BackupSchedule:  24 * time.Hour,
-		EventLogPath:    "/tmp/sentinel-events.ndjson",
-	}
+	// Use the actual V1 config loader
+	return LoadConfigV1()
 }
 
 // AutoMigrate automatically migrates from V1 to V2 if needed
