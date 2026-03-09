@@ -54,14 +54,20 @@ All implemented in internal/providers/financial/ package.
      2yr/10yr inversion first appears: WATCH
      10-year yield spikes > 0.2% in one day: WATCH
 
-5. OFAC Sanctions List (US Treasury — free, public)
-   URL: https://www.treasury.gov/ofac/downloads/sdnlist.txt
-   Also XML: https://www.treasury.gov/ofac/downloads/sdn.xml
-   Interval: 3600s
-   Detect new entries since last check (compare entry count + names)
-   Alert on new SDN additions: WATCH (always geopolitically significant)
-   Parse: name, type, program (RUSSIA, IRAN, DPRK, CYBER, etc.)
-   Include SDN program name in alert body
+5. OpenSanctions (245+ sources — free, public)
+   Bulk data: https://data.opensanctions.org/datasets/latest/default/entities.ftm.json
+   Search API: https://api.opensanctions.org/search/default?q={name}
+   Interval: 86400s (daily updates)
+   Free tier: bulk data downloads free, API 10k req/month free
+   Key: cfg.Keys["opensanctions"] (optional for higher limits)
+   Coverage: UN, EU, UK, US, Switzerland, Australia sanctions + PEPs
+   Alert on new entries: WATCH — always geopolitically significant
+   Show program country flags in alert card
+   Why better than OFAC alone:
+     - Covers 245+ sources vs. US-only
+     - Updated daily vs. weekly/monthly
+     - Structured data with entity type, program, country
+     - Includes PEP (Politically Exposed Persons) list
 
 6. SEC EDGAR Full-Text Search (free API, no key)
    URL: https://efts.sec.gov/LATEST/search-index?q="material+adverse"&dateRange=custom&startdt={TODAY}&enddt={TODAY}&forms=8-K
