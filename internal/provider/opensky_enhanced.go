@@ -70,18 +70,18 @@ func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyState) *model.Event
 	}
 
 	// Look up aircraft information
-	aircraftInfo := p.db.LookupWithFallback(state.ICAO24, state.Callsign)
+	aircraftInfo := p.db.LookupWithFallback(state.Icao24, state.Callsign)
 
 	// Determine category and severity
 	category, severity := p.determineCategoryAndSeverity(aircraftInfo)
 
 	// Create event
 	event := &model.Event{
-		ID:          fmt.Sprintf("opensky-%s-%d", state.ICAO24, time.Now().Unix()),
+		ID:          fmt.Sprintf("opensky-%s-%d", state.Icao24, time.Now().Unix()),
 		Title:       aircraftInfo["display_name"].(string),
 		Description: p.generateDescription(state, aircraftInfo),
 		Source:      "opensky",
-		SourceID:    state.ICAO24,
+		SourceID:    state.Icao24,
 		OccurredAt:  time.Now(),
 		Location: model.Location{
 			Type:        "Point",
@@ -92,7 +92,7 @@ func (p *OpenSkyEnhancedProvider) stateToEvent(state *OpenSkyState) *model.Event
 		Category:  category,
 		Severity:  severity,
 		Metadata: map[string]interface{}{
-			"icao24":        state.ICAO24,
+			"icao24":        state.Icao24,
 			"callsign":      state.Callsign,
 			"altitude":      state.Altitude,
 			"velocity":      state.Velocity,
@@ -248,7 +248,7 @@ func (p *OpenSkyEnhancedProvider) fetchStatesData(ctx context.Context) ([]*OpenS
 
 // OpenSkyState represents a flight state from OpenSky
 type OpenSkyState struct {
-	ICAO24       string  `json:"icao24"`
+	Icao24       string  `json:"icao24"`
 	Callsign     string  `json:"callsign"`
 	Latitude     float64 `json:"latitude"`
 	Longitude    float64 `json:"longitude"`

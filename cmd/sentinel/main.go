@@ -61,6 +61,20 @@ func main() {
 	}
 	defer eventLog.Close()
 
+	// Initialize OSINT storage
+	osintStorage := storage.NewOSINTStorage(store.DB())
+	
+	// Create OSINT resources table and seed built-in resources
+	if err := osintStorage.CreateTable(ctx); err != nil {
+		log.Printf("Warning: Failed to create OSINT resources table: %v", err)
+	} else {
+		if err := osintStorage.SeedBuiltinResources(ctx); err != nil {
+			log.Printf("Warning: Failed to seed OSINT resources: %v", err)
+		} else {
+			log.Printf("OSINT resources database initialized with built-in resources")
+		}
+	}
+
 	// Initialize API handler with infrastructure (creates stream broker)
 	handler := api.NewHandlerWithInfrastructure(
 		store, 
@@ -229,6 +243,16 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	// OSINT Resources endpoints
+	osintHandler := api.NewOSINTResourcesHandler(osintStorage)
+	
+	// Register OSINT resource routes using gorilla/mux
+	osintRouter := api.NewRouter()
+	osintHandler.RegisterRoutes(osintRouter)
+	
+	// Mount OSINT router under /api/osint
+	mux.Handle("/api/osint/", http.StripPrefix("/api/osint", osintRouter))
 
 	// Create HTTP server with configuration
 	httpServer := &http.Server{
