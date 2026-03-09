@@ -162,4 +162,28 @@ Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
 - Data infrastructure disabled (will be implemented in Stage 3)
 - System tray stubbed (will be implemented in 2-C)
 
-**Next**: Continue with Stage 2-B: Service Installer
+### Stage 2-B: Service Installer - COMPLETE ✅
+
+**2-B: Service Installer - COMPLETE**
+- **File**: `internal/service/installer.go`
+- **Platform Support**:
+  - **Windows**: Uses `sc.exe` to create/delete services
+  - **macOS**: Uses `launchd` with plist files in `/Library/LaunchDaemons/`
+  - **Linux**: Uses `systemd` with service files in `/etc/systemd/system/`
+- **Features**:
+  - ✅ Service installation (`--install-service`)
+  - ✅ Service uninstallation (`--uninstall-service`)
+  - ✅ Service status checking
+  - ✅ Platform detection and appropriate implementation
+  - ✅ Proper error handling and cleanup
+- **Security**: Requires root/admin privileges for installation
+- **Integration**: Works with CLI flags and config system
+
+**Implementation Details**:
+- Windows: Uses `sc create`, `sc delete`, `sc query`
+- macOS: Uses `launchctl load/unload`, plist XML files
+- Linux: Uses `systemctl enable/disable`, systemd service files
+- Automatic privilege checking
+- Proper cleanup on installation failure
+
+**Next**: Continue with Stage 2-C: System Tray
