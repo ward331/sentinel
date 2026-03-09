@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Config holds application configuration
-type Config struct {
+// ConfigV1 holds V1 application configuration
+type ConfigV1 struct {
 	// Database
 	DBPath          string
 	MaxConnections  int
