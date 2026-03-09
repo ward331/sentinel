@@ -1,0 +1,306 @@
+openapi: 3.0.3
+info:
+  title: SENTINEL World Dashboard API
+  description: REST API for ingesting and querying global events (earthquakes, wildfires, etc.)
+  version: 1.0.0
+  contact:
+    name: SENTINEL Team
+    email: ops@sentinel.world
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /api/events:
+    get:
+      summary: List events with filtering
+      description: Returns paginated list of events with optional filters
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Number of events to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: source
+          in: query
+          description: Filter by event source (e.g., usgs, gdacs)
+          schema:
+            type: string
+        - name: min_magnitude
+          in: query
+          description: Filter by minimum magnitude (for earthquakes)
+          schema:
+            type: number
+            minimum: 0
+        - name: start_time
+          in: query
+          description: Filter events after this timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          description: Filter events before this timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: bbox
+          in: query
+          description: Filter by bounding box (min_lon,min_lat,max_lon,max_lat)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  total:
+                    type: integer
+                    description: Total number of events matching filters
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Internal server error
+
+    post:
+      summary: Ingest a new event
+      description: Accepts event data from providers (USGS, GDACS, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid event data
+        '500':
+          description: Internal server error
+
+  /api/events/{id}:
+    get:
+      summary: Get event by ID
+      description: Returns a single event by its unique identifier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+        '500':
+          description: Internal server error
+
+  /api/events/stream:
+    get:
+      summary: Server-Sent Events stream
+      description: Real-time stream of new events as they are ingested
+      responses:
+        '200':
+          description: Successful connection
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+
+  /api/health:
+    get:
+      summary: Health check
+      description: Returns service health status
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                    description: Seconds since startup
+        '503':
+          description: Service is unhealthy
+
+components:
+  schemas:
+    Event:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - source
+        - occurred_at
+        - ingested_at
+        - location
+        - precision
+      properties:
+        id:
+          type: string
+          description: Unique event identifier
+        title:
+          type: string
+          description: Short title of the event
+        description:
+          type: string
+          description: Detailed description
+        source:
+          type: string
+          description: Source provider (usgs, gdacs, etc.)
+        source_id:
+          type: string
+          description: Original ID from the source
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the event occurred
+        ingested_at:
+          type: string
+          format: date-time
+          description: When the event was ingested
+        location:
+          $ref: '#/components/schemas/Location'
+        precision:
+          $ref: '#/components/schemas/Precision'
+        magnitude:
+          type: number
+          description: Magnitude for earthquakes
+        category:
+          type: string
+          description: Event category (earthquake, wildfire, flood, etc.)
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Severity level
+        metadata:
+          type: object
+          description: Additional provider-specific metadata
+        badges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Badge'
+
+    EventInput:
+      type: object
+      required:
+        - title
+        - description
+        - source
+        - occurred_at
+        - location
+        - precision
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        source:
+          type: string
+        source_id:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        location:
+          $ref: '#/components/schemas/Location'
+        precision:
+          $ref: '#/components/schemas/Precision'
+        magnitude:
+          type: number
+        category:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        metadata:
+          type: object
+
+    Location:
+      type: object
+      required:
+        - type
+        - coordinates
+      properties:
+        type:
+          type: string
+          enum: [Point, Polygon]
+          description: GeoJSON geometry type
+        coordinates:
+          type: array
+          description: Coordinates array (Point: [lon, lat], Polygon: [[[lon,lat],...]])
+        bbox:
+          type: array
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+          description: Bounding box [min_lon, min_lat, max_lon, max_lat]
+
+    Precision:
+      type: string
+      enum: [exact, polygon_area, approximate, text_inferred, unknown]
+      description: Location precision level
+
+    Badge:
+      type: object
+      required:
+        - label
+        - type
+        - timestamp
+      properties:
+        label:
+          type: string
+          description: Badge text
+        type:
+          type: string
+          enum: [source, precision, freshness]
+          description: Badge type
+        timestamp:
+          type: string
+          format: date-time
+          description: When the badge was last updated

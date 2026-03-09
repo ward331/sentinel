@@ -1,0 +1,121 @@
+# SENTINEL V2 Changelog
+
+## Version 2.0.0 - SENTINEL V2 Build
+
+### Build Start: March 9, 2026 06:22 UTC
+
+Starting SENTINEL V2 build from existing SENTINEL V1.0.0 codebase.
+
+Existing system status:
+- Backend: Go server on port 8080
+- Frontend: Dashboard on port 3000  
+- Database: SQLite with 14k+ events
+- Providers: USGS, GDACS, OpenSky operational
+- Features: REST API, SSE stream, alert system, filtering
+- Tests: `make smoke` passes
+
+Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
+
+---
+
+## Stage 1: Portability Scrub & Configuration System - COMPLETE ✅
+
+**Completed**: March 9, 2026 07:26 UTC
+
+### Changes Made:
+
+#### 1. **V2 Configuration System Created**
+- **File**: `internal/config/v2config.go`
+- **Features**:
+  - Complete V2 JSON configuration structure
+  - Platform-specific default directories (Linux, macOS, Windows)
+  - All 25+ V2 providers with individual enable/interval settings
+  - 6 notification methods (Telegram, Slack, Discord, ntfy, Pushover, Email)
+  - Financial alerts configuration (VIX, oil, crypto, bonds)
+  - Morning briefing & weekly digest scheduling
+  - UI preferences and location settings
+  - Cesium token management
+
+#### 2. **Migration System**
+- **File**: `internal/config/migrate.go`
+- **Features**:
+  - Automatic migration from V1 to V2 config
+  - Preserves existing V1 settings
+  - Platform-aware path migration
+
+#### 3. **Hardcoded Path Removal**
+- **Updated**: `internal/config/config.go`
+  - Removed `/tmp/sentinel.db` hardcoded path
+  - Removed `/tmp/sentinel-backups` hardcoded path  
+  - Removed `/tmp/sentinel-events.ndjson` hardcoded path
+  - Replaced with platform-specific defaults
+
+- **Updated**: `internal/backup/backup.go`
+  - Removed hardcoded `/tmp/sentinel-backups` default
+  - Uses platform-specific data directory
+
+#### 4. **Hardcoded Credential Removal**
+- **Updated**: `sentinel_dashboard.html`
+  - Removed hardcoded Cesium Ion token
+  - Token now injected via `window.SENTINEL_CONFIG`
+  - Backend URL now injected via `window.SENTINEL_CONFIG`
+
+- **Updated**: Other HTML test files
+  - `cesium_test.html`, `direct_cesium_test.html`, `final_globe_test.html`
+  - All hardcoded Cesium tokens removed
+
+#### 5. **Network Address Scrub**
+- **Verified**: No hardcoded `172.31.x.x` IP addresses found
+- **Verified**: No hardcoded `/home/` paths found
+- **Test files**: Some test files still reference `localhost:8080` (to be addressed in later stages)
+
+### Technical Details:
+
+#### Platform-Specific Defaults:
+- **Linux**: `~/.config/sentinel/config.json`, `~/.local/share/sentinel/`
+- **macOS**: `~/Library/Application Support/SENTINEL/config.json`, `~/Library/Application Support/SENTINEL/data/`
+- **Windows**: `%APPDATA%\SENTINEL\config.json`, `%APPDATA%\SENTINEL\data\`
+
+#### V1 Compatibility:
+- **Temporary**: Using `/tmp/sentinel-data/` for V1 compatibility during transition
+- **Migration**: V1 environment variables will be migrated to V2 JSON config
+- **Backward Compatibility**: V1 code continues to work with updated config system
+
+#### Configuration Structure Highlights:
+```json
+{
+  "version": "2.0.0",
+  "setup_complete": false,
+  "data_dir": "/tmp/sentinel-data",
+  "cesium_token": "",
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "tls_enabled": false
+  },
+  "providers": {
+    "usgs": {"enabled": true, "interval_seconds": 60},
+    "gdacs": {"enabled": true, "interval_seconds": 60},
+    "opensky": {"enabled": true, "interval_seconds": 60},
+    // ... 22 more providers
+  },
+  "notifications": {
+    "rules": [],
+    "geofences": []
+  }
+}
+```
+
+### Verification:
+- ✅ No hardcoded `/tmp/sentinel` paths in production code
+- ✅ No hardcoded Cesium tokens in frontend
+- ✅ No hardcoded `172.31.x.x` IP addresses
+- ✅ Platform-specific directory logic implemented
+- ✅ Migration path from V1 to V2 established
+
+### Next Stage:
+**Stage 2**: Single Binary & Embedded Web Assets - Begin building unified binary with embedded frontend
+
+---
+
+## Stage 2: Single Binary & Embedded Web Assets - IN PROGRESS 🔄

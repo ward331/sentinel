@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SENTINEL Backend SSE Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .event {
+            background: #e9ecef;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .event-title {
+            font-weight: bold;
+            color: #333;
+        }
+        .event-meta {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .event-desc {
+            margin-top: 10px;
+            color: #555;
+        }
+        .category-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .earthquake { background: #ff4444; color: white; }
+        .flood { background: #44ff44; color: black; }
+        .cyclone { background: #4444ff; color: white; }
+        .volcano { background: #ff44ff; color: white; }
+        .drought { background: #ffff44; color: black; }
+        .disaster { background: #44ffff; color: black; }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        #eventsContainer {
+            max-height: 500px;
+            overflow-y: auto;
+            margin-top: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 SENTINEL Backend SSE Test</h1>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-value" id="totalEvents">0</div>
+                <div class="stat-label">Total Events</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="connectedClients">1</div>
+                <div class="stat-label">Connected Clients</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="lastUpdate">-</div>
+                <div class="stat-label">Last Update</div>
+            </div>
+        </div>
+        
+        <div id="connectionStatus" class="status disconnected">
+            ❌ Disconnected from SSE stream
+        </div>
+        
+        <div>
+            <button id="connectBtn" onclick="connectSSE()">Connect to SSE Stream</button>
+            <button id="disconnectBtn" onclick="disconnectSSE()" disabled>Disconnect</button>
+            <button onclick="loadExistingEvents()">Load Existing Events</button>
+            <button onclick="clearEvents()">Clear Events</button>
+        </div>
+        
+        <div id="eventsContainer">
+            <p style="text-align: center; color: #999; padding: 20px;">
+                No events received yet. Click "Connect to SSE Stream" to start receiving real-time events.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let eventCount = 0;
+        const eventsContainer = document.getElementById('eventsContainer');
+        const totalEventsEl = document.getElementById('totalEvents');
+        const lastUpdateEl = document.getElementById('lastUpdate');
+        const connectionStatusEl = document.getElementById('connectionStatus');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        
+        function updateStatus(message, isConnected) {
+            connectionStatusEl.textContent = message;
+            connectionStatusEl.className = `status ${isConnected ? 'connected' : 'disconnected'}`;
+            connectBtn.disabled = isConnected;
+            disconnectBtn.disabled = !isConnected;
+        }
+        
+        function updateEventCount() {
+            totalEventsEl.textContent = eventCount;
+        }
+        
+        function updateLastUpdate() {
+            const now = new Date();
+            lastUpdateEl.textContent = now.toLocaleTimeString();
+        }
+        
+        function createEventElement(event) {
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'event';
+            
+            const categoryClass = event.category || 'disaster';
+            const categoryName = categoryClass.charAt(0).toUpperCase() + categoryClass.slice(1);
+            
+            const magnitude = event.magnitude ? `M${event.magnitude.toFixed(1)}` : '';
+            const coordinates = event.location && event.location.coordinates 
+                ? `${event.location.coordinates[1].toFixed(2)}°N, ${event.location.coordinates[0].toFixed(2)}°E`
+                : 'Unknown location';
+            
+            eventDiv.innerHTML = `
+                <div class="event-header">
+                    <div>
+                        <span class="category-badge ${categoryClass}">${categoryName}</span>
+                        <span class="event-title">${event.title || 'Untitled Event'}</span>
+                        ${magnitude ? `<span style="margin-left: 10px; font-weight: bold;">${magnitude}</span>` : ''}
+                    </div>
+                    <div class="event-meta">
+                        ${new Date(event.occurred_at).toLocaleString()}
+                    </div>
+                </div>
+                <div class="event-desc">
+                    <div><strong>Source:</strong> ${event.source || 'Unknown'}</div>
+                    <div><strong>Severity:</strong> ${event.severity || 'Unknown'}</div>
+                    <div><strong>Location:</strong> ${coordinates}</div>
+                    <div style="margin-top: 8px;">${event.description || 'No description available.'}</div>
+                    <div style="margin-top: 5px; font-size: 0.8em; color: #888;">
+                        ID: ${event.id}
+                    </div>
+                </div>
+            `;
+            
+            return eventDiv;
+        }
+        
+        function addEventToDisplay(event) {
+            const eventElement = createEventElement(event);
+            
+            // Add to top of container
+            if (eventsContainer.firstChild && eventsContainer.firstChild.tagName === 'P') {
+                eventsContainer.removeChild(eventsContainer.firstChild);
+            }
+            
+            eventsContainer.insertBefore(eventElement, eventsContainer.firstChild);
+            
+            // Limit to 50 events
+            const events = eventsContainer.getElementsByClassName('event');
+            if (events.length > 50) {
+                eventsContainer.removeChild(events[events.length - 1]);
+            }
+            
+            eventCount++;
+            updateEventCount();
+            updateLastUpdate();
+        }
+        
+        function connectSSE() {
+            if (eventSource) {
+                return;
+            }
+            
+            updateStatus('🔄 Connecting to SSE stream...', false);
+            
+            eventSource = new EventSource('http://localhost:8080/api/events/stream');
+            
+            eventSource.onopen = function() {
+                updateStatus('✅ Connected to SSE stream - receiving real-time events', true);
+            };
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEventToDisplay(data);
+                } catch (error) {
+                    console.error('Error parsing event:', error);
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('SSE Error:', error);
+                updateStatus('❌ SSE connection error', false);
+                disconnectSSE();
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!eventSource) {
+                        connectSSE();
+                    }
+                }, 3000);
+            };
+        }
+        
+        function disconnectSSE() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateStatus('❌ Disconnected from SSE stream', false);
+            }
+        }
+        
+        async function loadExistingEvents() {
+            try {
+                updateStatus('🔄 Loading existing events...', false);
+                const response = await fetch('http://localhost:8080/api/events?limit=20');
+                const data = await response.json();
+                
+                if (data.events && Array.isArray(data.events)) {
+                    // Clear existing placeholder
+                    if (eventsContainer.firstChild && eventsContainer.firstChild.tagName === 'P') {
+                        eventsContainer.removeChild(eventsContainer.firstChild);
+                    }
+                    
+                    data.events.forEach(event => {
+                        addEventToDisplay(event);
+                    });
+                    
+                    updateStatus(`✅ Loaded ${data.events.length} existing events`, false);
+                }
+            } catch (error) {
+                console.error('Error loading existing events:', error);
+                updateStatus('❌ Error loading existing events', false);
+            }
+        }
+        
+        function clearEvents() {
+            eventsContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No events received yet. Click "Connect to SSE Stream" to start receiving real-time events.</p>';
+            eventCount = 0;
+            updateEventCount();
+            updateStatus('Events cleared', false);
+        }
+        
+        // Auto-connect on page load
+        window.addEventListener('load', function() {
+            connectSSE();
+        });
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            disconnectSSE();
+        });
+    </script>
+</body>
+</html>
