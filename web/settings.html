@@ -509,4 +509,100 @@
                             <input type="checkbox" ${provider.enabled ? 'checked' : ''} 
                                    onchange="toggleProvider('${id}', this.checked)">
                             Enable ${config.name}
-                        </label
+                        </label>
+                    </div>
+                `;
+                card.addEventListener('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        const checkbox = card.querySelector('input[type="checkbox"]');
+                        checkbox.checked = !checkbox.checked;
+                        toggleProvider(id, checkbox.checked);
+                    }
+                });
+                providersList.appendChild(card);
+            }
+        }
+
+        // Toggle provider
+        function toggleProvider(id, enabled) {
+            const card = document.querySelector(`.provider-card input[onchange*="${id}"]`).closest('.provider-card');
+            const status = card.querySelector('.provider-status');
+            
+            if (enabled) {
+                card.classList.add('active');
+                status.textContent = 'ENABLED';
+                status.classList.remove('disabled');
+            } else {
+                card.classList.remove('active');
+                status.textContent = 'DISABLED';
+                status.classList.add('disabled');
+            }
+        }
+
+        // Save settings to API
+        async function saveSettings() {
+            const settings = {
+                server: {
+                    port: parseInt(document.getElementById('serverPort').value),
+                    host: document.getElementById('serverHost').value
+                },
+                auto_open_browser: document.getElementById('autoOpenBrowser').checked,
+                ui: {
+                    default_view: document.getElementById('defaultView').value,
+                    sound_volume: parseInt(document.getElementById('soundVolume').value),
+                    sound_enabled: document.getElementById('soundEnabled').checked,
+                    ticker_enabled: document.getElementById('tickerEnabled').checked
+                },
+                location: {
+                    lat: parseFloat(document.getElementById('latitude').value) || 0,
+                    lon: parseFloat(document.getElementById('longitude').value) || 0
+                },
+                providers: {}
+            };
+
+            // Get provider states
+            const providerCheckboxes = document.querySelectorAll('.provider-card input[type="checkbox"]');
+            providerCheckboxes.forEach(checkbox => {
+                const match = checkbox.getAttribute('onchange').match(/toggleProvider\('([^']+)'/);
+                if (match) {
+                    const providerId = match[1];
+                    settings.providers[providerId] = {
+                        enabled: checkbox.checked
+                    };
+                }
+            });
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.ok) {
+                    showStatus('Settings saved successfully', 'success');
+                } else {
+                    throw new Error('Failed to save settings');
+                }
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                showStatus('Failed to save settings', 'error');
+            }
+        }
+
+        // Show status message
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusEl.className = 'status-message';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
