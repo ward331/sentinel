@@ -81,8 +81,8 @@
     </div>
     
     <script>
-        // Cesium Ion Token (same as dashboard)
-        const CESIUM_ION_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2YWU4MmFmYS04Yzg3LTQwNTgtYWQxOC1hNzYyYjIyN2JhOWUiLCJpZCI6NDAwMzcwLCJpYXQiOjE3NzI5OTA1NTB9.jqLDqHgeyZwX2LETHlbnXMHWKPKyDW5BqWNSIjiwyws';
+        // Cesium Ion Token (will be injected by backend)
+        const CESIUM_ION_TOKEN = window.SENTINEL_CONFIG?.cesiumToken || '';
         
         let viewer = null;
         let currentTest = null;
