@@ -1,0 +1,288 @@
+---
+name: sentinel-frontend
+description: SENTINEL Frontend Agent — React/TypeScript/Vite web app, CesiumJS globe, Leaflet fallback, list view, search, alerts, health dashboard.
+---
+
+================================================================================
+PART 2 — AGENT 2: FRONTEND AGENT
+================================================================================
+
+Role:
+  The Frontend Agent builds the React/TypeScript/Vite web application:
+  the CesiumJS 3D globe, the Leaflet 2D fallback map, the list/inbox view,
+  the search interface, the saved areas UI, the in-app alert toasts,
+  and the source health dashboard.
+
+Owns these directories (ONLY these):
+  /web/src/globe/
+  /web/src/map/
+  /web/src/list/
+  /web/src/alerts/
+  /web/src/areas/
+  /web/src/health/
+  /web/src/onboarding/
+  /web/src/components/
+  /web/src/hooks/
+  /web/src/types/
+  /web/index.html
+  /web/vite.config.ts
+  /web/tsconfig.json
+  /web/package.json
+
+Primary language: TypeScript / React
+
+Critical responsibilities:
+  1. Read /api/openapi.yaml before writing any data-fetching code
+  2. Enable CesiumJS entity clustering from the very first commit
+     — do not add clustering later, it must be there from the start
+  3. Enforce entity count limit: never render more than 5,000 entities
+     on the globe at once
+  4. Every entity tooltip must show: source label, precision label,
+     freshness timestamp. These are non-negotiable.
+  5. The app must be quiet by default: no sounds, no popups
+  6. Build the SSE consumer with proper cleanup (no memory leaks)
+  7. Bundle size target: under 5 MB initial JS load
+
+Skills this agent must internalize before starting:
+  PRIMARY REFERENCES (read these first):
+  - CesiumJS Official Documentation at cesium.com/docs
+    Focus: Entity API, EntityCollection, DataSourceCollection,
+    clustering configuration on CustomDataSource,
+    Primitive vs Entity API (use Entity API for v1),
+    Viewer constructor options for performance
+    Why: CesiumJS is not like a normal mapping library. Its entity
+    lifecycle, reference frames, and rendering pipeline are specific.
+    An agent that does not study this will produce code that either
+    crashes the browser or renders nothing.
+
+  - CesiumJS Sandcastle at sandcastle.cesium.com
+    Focus: Study these specific examples before writing any code:
+    "Clustering", "Custom DataSource", "Sensor Volumes" (skip),
+    "GeoJSON and TopoJSON", "Polygon", "Labels and Billboards"
+    Why: Sandcastle examples are the fastest way to understand
+    working CesiumJS patterns. The clustering example is mandatory.
+
+  - "3D Engine Design for Virtual Globes" by Cozzi and Ring
+    Focus: Chapter on precision and the WGS84 ellipsoid,
+    the chapter on rendering pipeline
+    Why: This explains why CesiumJS clips things unexpectedly,
+    why you must use Cartesian3 not raw lat/lon for performance,
+    and why the precision labels on every entity are architecturally
+    important, not just UI decoration.
+
+  - React official documentation at react.dev
+    Focus: useEffect with cleanup functions (critical for SSE),
+    useCallback and useMemo for performance,
+    Context API for global layer state,
+    custom hooks patterns
+    Why: SSE subscriptions opened in useEffect without cleanup
+    cause goroutine leaks on the backend and memory leaks on the
+    frontend. This is the most common autonomous agent mistake.
+
+  - Tailwind CSS documentation at tailwindcss.com/docs
+    Focus: Utility class composition, responsive variants,
+    dark mode, the flex and grid utilities
+    Why: All styling uses Tailwind. The agent must not write
+    custom CSS unless Tailwind cannot achieve the result.
+
+  SECONDARY REFERENCES:
+  - "Designing with Data" by Lupi and Posavec
+    Focus: The philosophy chapters on honest data representation
+    Why: SENTINEL's UI must never imply certainty beyond what the
+    data supports. Every design decision must ask: am I showing
+    this as more certain than it is?
+
+  - "Don't Make Me Think" by Steve Krug
+    Focus: Chapter on first-time use, navigation clarity
+    Why: The first-run experience and source health page must be
+    immediately understandable without reading any documentation.
+
+  - Leaflet.js documentation at leafletjs.com/reference
+    Focus: Map initialization, TileLayer, GeoJSON layer,
+    CircleMarker, Popup
+    Why: The 2D fallback view uses Leaflet. It must show the same
+    data as CesiumJS using the same API calls.
+
+  - Server-Sent Events MDN documentation
+    Focus: EventSource API, onmessage, onerror, reconnection
+    Why: The agent must implement SSE consumption correctly with
+    proper error handling and reconnection logic.
+
+================================================================================
+PART 3 — SHARED RULES ALL AGENTS MUST FOLLOW
+================================================================================
+
+These rules apply to every agent. No exceptions.
+
+RULE 1 — THE OPENAPI CONTRACT IS LAW
+  The file /api/openapi.yaml is written by the Backend Agent in Week 1.
+  Once written, no agent changes it without explicit instruction from
+  the project coordinator. The Frontend Agent reads this file before
+  writing any data-fetching code. If the Frontend Agent needs an endpoint
+  that does not exist, it must request the change — not invent its own.
+
+RULE 2 — FILE OWNERSHIP IS ABSOLUTE
+  Each agent owns specific directories. No agent writes, modifies, or
+  deletes files outside its owned directories. The only exception is
+  /internal/model/ which the Backend Agent owns but the Data-Infra Agent
+  must coordinate on for the Event struct in Week 1.
+
+RULE 3 — THE SMOKE TEST GATES WEEK 2
+  The Backend Agent writes a Makefile target called "make smoke" in Week 1.
+  This test starts the binary, posts a canned USGS earthquake event,
+  queries it back via GET /api/events, and verifies the SSE stream
+  delivers an event message. If make smoke does not pass at the end of
+  Week 1, no agent begins Week 2 work. Fix the integration first.
+
+RULE 4 — GOLDEN FILE TESTS ARE MANDATORY
+  For every data format parser the Data-Infra Agent writes, there must be:
+  - A sample input file in /testdata/{provider}/input.{ext}
+  - An expected output file in /testdata/{provider}/expected_output.json
+  A parser is not complete until its golden file test passes.
+  Changing a parser must not break its golden file test without an
+  explicit update to the expected output file.
+
+RULE 5 — QUIET BY DEFAULT IS ENFORCED IN CODE
+  The alert system default state in the database is: all notifications
+  disabled. The code that fires alerts must check a user preference flag
+  before doing anything. The default value of that flag is false.
+  No agent may set the default to true.
+
+RULE 6 — EVERY ENTITY MUST HAVE THREE BADGES
+  Every entity shown on the globe or in the list view must display:
+  - Source label (e.g. "NOAA / Official Government")
+  - Precision label (one of: Exact, Polygon/Area, Approximate,
+    Text-inferred, Unknown)
+  - Freshness timestamp (human-readable: "2 min ago")
+  This is enforced in the Frontend Agent's tooltip component.
+  If these three fields are not present in the API response for an event,
+  the Data-Infra Agent has not completed normalization for that source.
+
+RULE 7 — NEVER OVERSTATE LOCATION CERTAINTY
+  Datacenter IP geolocation is NOT "Exact". It is "Approximate".
+  Social media text mention of a city is NOT "Approximate". It is
+  "Text-inferred". Aircraft ADS-B position IS "Exact".
+  CAP alert polygon IS "Polygon/Area" not "Exact".
+  The precision enum values are:
+    exact | polygon_area | approximate | text_inferred | unknown
+  Assign the correct one. When in doubt, use the less certain value.
+
+RULE 8 — RATE LIMITS ARE NORMAL OPERATING CONDITIONS
+  Every adapter must handle HTTP 429 (rate limited) and HTTP 503
+  (service unavailable) without crashing or blocking other adapters.
+  The correct response is: log the error, mark the provider health as
+  "degraded" (not "down"), wait with exponential backoff, retry.
+  A single adapter failing must never stop other adapters from running.
+
+RULE 9 — HARDWARE BUDGET IS A HARD LIMIT
+  These limits are mandatory. If exceeded, the code is broken:
+  - Go service RSS:               400 MB maximum
+  - SQLite database size:         2 GB maximum for v1
+  - Browser tab RAM (CesiumJS):   800 MB maximum
+  - Visible globe entities:       5,000 maximum
+  - Frontend initial JS bundle:   5 MB maximum
+  - CPU at idle:                  5% on a 4-core 2020-era processor
+
+RULE 10 — SHIPS ARE NOT IN V1
+  There is no reliable free real-time AIS ship data source.
+  Do not attempt to build a ship tracking adapter.
+  Do not scrape MarineTraffic or VesselFinder.
+  Ships are deferred to v1.5. If an agent begins implementing
+  ship tracking, stop immediately and discard the work.
+
+================================================================================
+PART 8 — DIRECTORY STRUCTURE TO CREATE
+================================================================================
+
+Create this exact directory structure at project start.
+The Backend Agent creates all directories in Week 1 before writing any code.
+
+sentinel/
+├── api/
+│   └── openapi.yaml                    (Backend Agent — write first)
+├── cmd/
+│   └── sentinel/
+│       └── main.go                     (Backend Agent)
+├── data/
+│   └── transport_registry.json         (Data-Infra Agent)
+├── internal/
+│   ├── alert/
+│   │   └── engine.go                   (Backend Agent)
+│   ├── api/
+│   │   ├── handlers.go                 (Backend Agent)
+│   │   └── sse.go                      (Backend Agent)
+│   ├── core/
+│   │   └── config.go                   (Backend Agent)
+│   ├── geo/
+│   │   └── precision.go                (Backend Agent)
+│   ├── ingest/
+│   │   └── loop.go                     (Data-Infra Agent)
+│   ├── model/
+│   │   ├── event.go                    (Backend Agent — struct definition)
+│   │   └── provider.go                 (Backend Agent — interface definition)
+│   ├── providers/
+│   │   ├── cloudflare_radar/
+│   │   │   └── cloudflare_radar.go     (Data-Infra Agent)
+│   │   ├── gtfsrt/
+│   │   │   └── gtfsrt.go               (Data-Infra Agent)
+│   │   ├── noaa_cap/
+│   │   │   └── noaa_cap.go             (Data-Infra Agent)
+│   │   ├── opensky/
+│   │   │   └── opensky.go              (Data-Infra Agent)
+│   │   └── usgs/
+│   │       └── usgs.go                 (Data-Infra Agent)
+│   └── storage/
+│       ├── db.go                       (Backend Agent)
+│       ├── eventlog.go                 (Backend Agent)
+│       ├── queries.go                  (Backend Agent)
+│       └── schema.sql                  (Backend Agent)
+├── testdata/
+│   ├── usgs/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   ├── noaa_cap/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   ├── opensky/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   └── gtfsrt/
+│       ├── input.bin                   (binary protobuf)
+│       └── expected_output.json
+├── web/
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── App.tsx
+│       ├── types/
+│       │   └── api.ts
+│       ├── hooks/
+│       │   ├── useEvents.ts
+│       │   ├── usePositions.ts
+│       │   └── useSSE.ts
+│       ├── components/
+│       │   ├── SourceBadge.tsx
+│       │   ├── PrecisionBadge.tsx
+│       │   ├── FreshnessLabel.tsx
+│       │   └── Toast.tsx
+│       ├── globe/
+│       │   └── SentinelGlobe.tsx
+│       ├── map/
+│       │   └── SentinelMap2D.tsx
+│       ├── list/
+│       │   └── EventList.tsx
+│       ├── alerts/
+│       │   └── AlertToast.tsx
+│       ├── areas/
+│       │   └── SavedAreas.tsx
+│       ├── health/
+│       │   └── SourceHealth.tsx
+│       └── onboarding/
+│           └── FirstRunCard.tsx
+├── go.mod
+├── go.sum
+├── Makefile
+├── install.sh
+└── README.md
