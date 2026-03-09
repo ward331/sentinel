@@ -261,4 +261,68 @@ Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
 
 **Manifest**: Created `manifests/05_OSINT_RESOURCES.md` with full documentation
 
-**Next**: Complete Stage 2-D Setup Wizard and continue with Stage 2-E: Settings Page
+### Stage 2-D: Setup Wizard - COMPLETE ✅
+
+**2-D: Setup Wizard - COMPLETE**
+- **File**: `internal/setup/wizard.go`
+- **Features**:
+  - ✅ Interactive terminal-based wizard
+  - ✅ 7-step configuration process
+  - ✅ Data directory selection
+  - ✅ Server configuration (port, host)
+  - ✅ Cesium Ion token collection
+  - ✅ Notification method setup
+  - ✅ Provider selection
+  - ✅ Location configuration
+  - ✅ UI preferences
+  - ✅ Automatic config saving
+- **Integration**: Runs automatically on first launch or with `--setup` flag
+
+### Stage 2-E: Settings Page - IN PROGRESS 🔄
+
+**2-E: Settings Page - IN PROGRESS**
+- **Files**: `internal/api/settings.go`, `web/settings.html`
+- **Features**:
+  - ✅ Settings API with GET/POST endpoints
+  - ✅ Safe config serialization (redacts sensitive data)
+  - ✅ Settings update with validation
+  - ✅ Modern HTML settings page
+  - ✅ Server configuration UI
+  - ✅ UI preferences controls
+  - ✅ Provider management interface
+  - ✅ Location settings
+- **Design**: Dark theme with gradient backgrounds, card-based layout
+
+### New Feature: Bellingcat Aircraft Database ✅
+
+**Added**: Bellingcat ADS-B History aircraft identification database
+
+**Source**: `https://raw.githubusercontent.com/bellingcat/adsb-history/main/backend-data-loading/modes.csv`
+- **Records**: ~500,000 aircraft registrations
+- **Fields**: Hex, registration, typecode, owner, aircraft
+- **Update**: Monthly automatic refresh
+- **Storage**: Embedded in binary via `go:embed`
+
+**Implementation**:
+- **Package**: `internal/providers/aircraft/database.go`
+- **Features**:
+  - ✅ Aircraft lookup by ICAO hex code
+  - ✅ Military aircraft detection (owner/aircraft analysis)
+  - ✅ Callsign pattern recognition
+  - ✅ Automatic monthly refresh
+  - ✅ Fast in-memory lookup
+
+**Integration with Flight Providers**:
+1. OpenSky/Airplanes.live returns ICAO hex code
+2. Lookup in Bellingcat database
+3. Enrich event: registration, typecode, owner, aircraft name
+4. Flag military aircraft automatically
+5. Transform "Unknown aircraft AE1234" → "USAF RC-135V Rivet Joint N/A"
+
+**Enhanced OpenSky Provider**:
+- **File**: `internal/provider/opensky_enhanced.go`
+- **Features**: Aircraft identification, military flagging, enriched metadata
+
+**OSINT Resources**: Added to `manifests/05_OSINT_RESOURCES.md`
+
+**Next**: Complete Stage 2-E Settings Page and continue with Stage 3

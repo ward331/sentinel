@@ -132,3 +132,90 @@
 - **Details Panel**: Weapon/target info, interception rate, impact
 - **Timeline**: Chronological wave visualization
 - **Heatmap**: Strike density overlay
+
+---
+
+## Aviation OSINT Resources
+
+### Bellingcat ADS-B History
+
+**Name**: Bellingcat ADS-B History  
+**URL**: https://github.com/bellingcat/adsb-history  
+**Category**: Aviation OSINT  
+**Description**: Historical aircraft tracking and investigation tool with comprehensive aircraft identification database
+
+#### Database Integration:
+- **File**: `modes.csv` (embedded in binary)
+- **Source**: Bellingcat GitHub repository
+- **Records**: ~500,000 aircraft registrations
+- **Update**: Monthly automatic refresh
+- **Storage**: Embedded via `go:embed`
+
+#### Data Fields:
+```csv
+hex,registration,typecode,owner,aircraft
+```
+
+#### Aircraft Identification:
+- **Hex Code**: ICAO 24-bit address (primary key)
+- **Registration**: Civil aircraft registration (N-number, etc.)
+- **Type Code**: ICAO aircraft type designator
+- **Owner**: Aircraft owner/operator
+- **Aircraft**: Aircraft model name
+
+#### Military Detection:
+- **Owner Analysis**: "Air Force", "Army", "Navy", "Military", "Defense"
+- **Aircraft Analysis**: "C-130", "F-", "B-", "RC-135", "Global Hawk"
+- **Callsign Patterns**: "RCH", "SAM", "CNV", "RRR", "GAF", "CTM"
+- **Automatic Flagging**: Military aircraft flagged regardless of squawk
+
+#### Integration with Flight Providers:
+1. **OpenSky/Airplanes.live** returns ICAO hex code
+2. **Lookup** in Bellingcat database
+3. **Enrich** event with registration, typecode, owner, aircraft name
+4. **Flag** military aircraft automatically
+5. **Display** enriched information in UI
+
+#### Example Transformation:
+- **Before**: "Unknown aircraft AE1234"
+- **After**: "USAF RC-135V Rivet Joint N/A" (military flagged)
+
+#### Implementation:
+- **Package**: `internal/providers/aircraft/database.go`
+- **Embedding**: `//go:embed modes.csv`
+- **Lookup**: `db.Lookup("AE1234")`
+- **Enrichment**: `db.LookupWithFallback("AE1234", "RCH123")`
+- **Auto-refresh**: Monthly from GitHub
+
+#### Usage in SENTINEL:
+```go
+// Initialize database
+db := aircraft.InitializeAircraftDatabase()
+
+// Lookup aircraft
+info, found := db.Lookup("AE1234")
+if found {
+    fmt.Printf("Aircraft: %s %s\n", info.Aircraft, info.Registration)
+    fmt.Printf("Owner: %s\n", info.Owner)
+    fmt.Printf("Military: %v\n", info.Military)
+}
+
+// Enrich flight event
+metadata := db.LookupWithFallback("AE1234", "RCH123")
+// metadata contains: hex, callsign, identified, military, registration, etc.
+```
+
+#### Benefits:
+- **Zero-key**: No API key required
+- **Comprehensive**: ~500,000 aircraft records
+- **Military Intelligence**: Automatic military aircraft detection
+- **Real-time**: Embedded in binary, fast lookups
+- **Maintained**: Monthly updates from Bellingcat
+- **Open Source**: Fully transparent data source
+
+#### Applications:
+- Military aircraft tracking and monitoring
+- Civil aviation monitoring
+- Suspicious flight detection
+- Historical flight analysis
+- OSINT investigations
