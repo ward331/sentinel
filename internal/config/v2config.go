@@ -147,6 +147,8 @@ type ProvidersConfig struct {
 	OFACSDN        ProviderConfig `json:"ofac_sdn"`
 	TreasuryYields ProviderConfig `json:"treasury_yields"`
 	NewsRSS        ProviderConfig `json:"news_rss"`
+	IranConflict   ProviderConfig `json:"iran_conflict"`
+	ISW            ProviderConfig `json:"isw"`
 }
 
 type NotificationRule struct {
@@ -331,6 +333,8 @@ func DefaultConfig() *Config {
 			OFACSDN:        ProviderConfig{Enabled: true, IntervalSeconds: 3600},
 			TreasuryYields: ProviderConfig{Enabled: true, IntervalSeconds: 3600},
 			NewsRSS:        ProviderConfig{Enabled: true, IntervalSeconds: 1800},
+			IranConflict:   ProviderConfig{Enabled: true, IntervalSeconds: 900},  // 15 minutes
+			ISW:            ProviderConfig{Enabled: true, IntervalSeconds: 1800}, // 30 minutes
 		},
 		
 		Notifications: NotificationsConfig{

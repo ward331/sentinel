@@ -214,4 +214,51 @@ Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
 - Proper integration with application shutdown
 - Callback architecture for menu actions
 
-**Next**: Continue with Stage 2-D: Setup Wizard
+### Stage 2-D: Setup Wizard - IN PROGRESS 🔄
+
+**2-D: Setup Wizard - IN PROGRESS**
+- **File**: `internal/setup/wizard.go`
+- **Features**:
+  - ✅ Interactive terminal-based wizard
+  - ✅ 7-step configuration process
+  - ✅ Data directory selection
+  - ✅ Server configuration (port, host)
+  - ✅ Cesium Ion token collection
+  - ✅ Notification method setup
+  - ✅ Provider selection
+  - ✅ Location configuration
+  - ✅ UI preferences
+  - ✅ Automatic config saving
+- **Integration**: Runs automatically on first launch or with `--setup` flag
+
+### New Feature: Iran Conflict Data Provider ✅
+
+**Added**: Zero-key OSINT provider for Iran-Israel conflict tracking
+
+**Sources**:
+1. **GitHub OSINT Dataset** (`waves.json`)
+   - URL: `https://raw.githubusercontent.com/danielrosehill/Iran-Israel-War-2026-OSINT-Data/main/data/waves.json`
+   - Poll: Every 15 minutes
+   - Data: Operation name, weapons, targets, coordinates, interception rate
+
+2. **ISW RSS Feed**
+   - URL: `https://understandingwar.org/rss.xml`
+   - Poll: Every 30 minutes
+   - Filter: Iran/Israel/Middle East keywords
+
+3. **Iran Strike Map**
+   - URL: `https://www.iranstrikemap.com`
+   - Type: Embedded iframe in media wall
+   - Category: Conflict Tracking
+
+**Implementation**:
+- **File**: `internal/provider/iranconflict.go`
+- **Category**: `conflict`
+- **Severity**: Based on weapon type and target type
+- **Alert Tier**: TIER 3 for new strike waves
+- **Badges**: OSINT Conflict Data, Exact, Real-time
+- **Config**: Added to V2 config system (`iran_conflict`, `isw`)
+
+**Manifest**: Created `manifests/05_OSINT_RESOURCES.md` with full documentation
+
+**Next**: Complete Stage 2-D Setup Wizard and continue with Stage 2-E: Settings Page
