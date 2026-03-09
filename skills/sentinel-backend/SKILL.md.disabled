@@ -1,0 +1,766 @@
+---
+name: sentinel-backend
+description: SENTINEL Backend Agent — Go server, database, REST API, SSE stream. Owns /cmd/sentinel/ /internal/core/ /internal/api/ /internal/storage/ /internal/model/
+---
+
+================================================================================
+PART 2 — AGENT 1: BACKEND AGENT
+================================================================================
+
+Role:
+  The Backend Agent builds the Go server, database layer, REST API,
+  SSE stream, and all internal Go interfaces and models.
+
+Owns these directories (ONLY these):
+  /cmd/sentinel/
+  /internal/core/
+  /internal/api/
+  /internal/storage/
+  /internal/model/
+  /internal/alert/
+  /internal/geo/
+  /api/openapi.yaml
+  /Makefile
+  /go.mod
+  /go.sum
+
+Primary language: Go
+
+Critical responsibilities:
+  1. Write /api/openapi.yaml BEFORE writing any endpoint code
+  2. Initialize SQLite with WAL mode, FTS5, and R*Tree on first boot
+  3. Define all shared Go interfaces in /internal/model/
+  4. Build the REST API endpoints exactly as specified in openapi.yaml
+  5. Build the SSE stream endpoint
+  6. Build the make smoke test target
+  7. Enforce RAM budget: Go service must stay under 400 MB RSS
+
+Skills this agent must internalize before starting:
+  PRIMARY REFERENCES (read these first):
+  - "The Go Programming Language" by Donovan & Kernighan
+    Focus: Chapter 7 (interfaces), Chapter 8 (goroutines and channels),
+    Chapter 9 (concurrency with shared variables)
+    Why: The ingestion loop, SSE hub, and SQLite access all require
+    correct goroutine and channel patterns. Wrong patterns cause deadlocks
+    and goroutine leaks.
+
+  - "Concurrency in Go" by Katherine Cox-Buday
+    Focus: Chapters on pipelines, cancellation, and context propagation
+    Why: The Backend Agent must wire context.Context through every
+    goroutine so that graceful shutdown actually stops all work cleanly.
+
+  - "Using SQLite" by Jay A. Owens
+    Focus: WAL mode configuration, FTS5 full-text search tables,
+    R*Tree spatial index tables, concurrent read/write patterns
+    Why: SQLite WAL mode MUST be enabled on initialization or concurrent
+    reads from the API will block ingestion writes. FTS5 and R*Tree must
+    be set up with the correct schema from day one — retrofitting them
+    is painful.
+
+  - "Designing Data-Intensive Applications" by Martin Kleppmann
+    Focus: Chapter 3 (storage engines), Chapter 11 (stream processing),
+    the sections on event logs and derived data
+    Why: The entire storage philosophy of SENTINEL — append-only log
+    as truth, SQLite as a derived index — comes from this book.
+    The agent must understand WHY this separation exists, not just
+    copy the pattern blindly.
+
+  - "REST API Design Rulebook" by Mark Masse
+    Focus: Resource naming, HTTP status codes, pagination conventions
+    Why: The OpenAPI contract must follow consistent conventions or
+    the Frontend Agent will build against a moving target.
+
+  SECONDARY REFERENCES:
+  - Go standard library documentation for: net/http, database/sql,
+    encoding/json, context, sync, os, io
+  - SQLite documentation: WAL mode pragma, FTS5 content tables,
+    rtree virtual tables
+  - Server-Sent Events specification (W3C): how event: data: id: work,
+    how reconnection with Last-Event-ID works
+  - OpenAPI 3.1 specification: how to document SSE endpoints,
+    how to document pagination, how to document enums
+
+================================================================================
+PART 3 — SHARED RULES ALL AGENTS MUST FOLLOW
+================================================================================
+
+These rules apply to every agent. No exceptions.
+
+RULE 1 — THE OPENAPI CONTRACT IS LAW
+  The file /api/openapi.yaml is written by the Backend Agent in Week 1.
+  Once written, no agent changes it without explicit instruction from
+  the project coordinator. The Frontend Agent reads this file before
+  writing any data-fetching code. If the Frontend Agent needs an endpoint
+  that does not exist, it must request the change — not invent its own.
+
+RULE 2 — FILE OWNERSHIP IS ABSOLUTE
+  Each agent owns specific directories. No agent writes, modifies, or
+  deletes files outside its owned directories. The only exception is
+  /internal/model/ which the Backend Agent owns but the Data-Infra Agent
+  must coordinate on for the Event struct in Week 1.
+
+RULE 3 — THE SMOKE TEST GATES WEEK 2
+  The Backend Agent writes a Makefile target called "make smoke" in Week 1.
+  This test starts the binary, posts a canned USGS earthquake event,
+  queries it back via GET /api/events, and verifies the SSE stream
+  delivers an event message. If make smoke does not pass at the end of
+  Week 1, no agent begins Week 2 work. Fix the integration first.
+
+RULE 4 — GOLDEN FILE TESTS ARE MANDATORY
+  For every data format parser the Data-Infra Agent writes, there must be:
+  - A sample input file in /testdata/{provider}/input.{ext}
+  - An expected output file in /testdata/{provider}/expected_output.json
+  A parser is not complete until its golden file test passes.
+  Changing a parser must not break its golden file test without an
+  explicit update to the expected output file.
+
+RULE 5 — QUIET BY DEFAULT IS ENFORCED IN CODE
+  The alert system default state in the database is: all notifications
+  disabled. The code that fires alerts must check a user preference flag
+  before doing anything. The default value of that flag is false.
+  No agent may set the default to true.
+
+RULE 6 — EVERY ENTITY MUST HAVE THREE BADGES
+  Every entity shown on the globe or in the list view must display:
+  - Source label (e.g. "NOAA / Official Government")
+  - Precision label (one of: Exact, Polygon/Area, Approximate,
+    Text-inferred, Unknown)
+  - Freshness timestamp (human-readable: "2 min ago")
+  This is enforced in the Frontend Agent's tooltip component.
+  If these three fields are not present in the API response for an event,
+  the Data-Infra Agent has not completed normalization for that source.
+
+RULE 7 — NEVER OVERSTATE LOCATION CERTAINTY
+  Datacenter IP geolocation is NOT "Exact". It is "Approximate".
+  Social media text mention of a city is NOT "Approximate". It is
+  "Text-inferred". Aircraft ADS-B position IS "Exact".
+  CAP alert polygon IS "Polygon/Area" not "Exact".
+  The precision enum values are:
+    exact | polygon_area | approximate | text_inferred | unknown
+  Assign the correct one. When in doubt, use the less certain value.
+
+RULE 8 — RATE LIMITS ARE NORMAL OPERATING CONDITIONS
+  Every adapter must handle HTTP 429 (rate limited) and HTTP 503
+  (service unavailable) without crashing or blocking other adapters.
+  The correct response is: log the error, mark the provider health as
+  "degraded" (not "down"), wait with exponential backoff, retry.
+  A single adapter failing must never stop other adapters from running.
+
+RULE 9 — HARDWARE BUDGET IS A HARD LIMIT
+  These limits are mandatory. If exceeded, the code is broken:
+  - Go service RSS:               400 MB maximum
+  - SQLite database size:         2 GB maximum for v1
+  - Browser tab RAM (CesiumJS):   800 MB maximum
+  - Visible globe entities:       5,000 maximum
+  - Frontend initial JS bundle:   5 MB maximum
+  - CPU at idle:                  5% on a 4-core 2020-era processor
+
+RULE 10 — SHIPS ARE NOT IN V1
+  There is no reliable free real-time AIS ship data source.
+  Do not attempt to build a ship tracking adapter.
+  Do not scrape MarineTraffic or VesselFinder.
+  Ships are deferred to v1.5. If an agent begins implementing
+  ship tracking, stop immediately and discard the work.
+
+================================================================================
+PART 6 — CANONICAL DATA MODELS
+================================================================================
+
+These are the exact Go struct definitions for the shared model layer.
+The Backend Agent writes these files. The Data-Infra Agent implements them.
+Do not change field names or types without coordinating with all agents.
+
+------------------------------------------------------------------------
+File: /internal/model/event.go
+------------------------------------------------------------------------
+
+package model
+
+import "time"
+
+type PrecisionType string
+const (
+    PrecisionExact        PrecisionType = "exact"
+    PrecisionPolygonArea  PrecisionType = "polygon_area"
+    PrecisionApproximate  PrecisionType = "approximate"
+    PrecisionTextInferred PrecisionType = "text_inferred"
+    PrecisionUnknown      PrecisionType = "unknown"
+)
+
+type ConfidenceType string
+const (
+    ConfidenceSignal            ConfidenceType = "signal"
+    ConfidenceAnomaly           ConfidenceType = "anomaly"
+    ConfidenceCorroborated      ConfidenceType = "corroborated"
+    ConfidenceOfficiallyConfirmed ConfidenceType = "officially_confirmed"
+)
+
+type SeverityType string
+const (
+    SeverityInfo     SeverityType = "info"
+    SeverityMinor    SeverityType = "minor"
+    SeverityModerate SeverityType = "moderate"
+    SeveritySevere   SeverityType = "severe"
+    SeverityExtreme  SeverityType = "extreme"
+)
+
+type SourceClass string
+const (
+    SourceClassOfficialGovernment      SourceClass = "official_government"
+    SourceClassOfficialPublicAuthority SourceClass = "official_public_authority"
+    SourceClassCommunity               SourceClass = "community"
+    SourceClassCommercialOptional      SourceClass = "commercial_optional"
+    SourceClassCustomUser              SourceClass = "custom_user"
+    SourceClassInferredDerived         SourceClass = "inferred_derived"
+)
+
+type EntityType string
+const (
+    EntityTypeAlert     EntityType = "alert"
+    EntityTypeAircraft  EntityType = "aircraft"
+    EntityTypeVehicle   EntityType = "vehicle"
+    EntityTypeSatellite EntityType = "satellite"
+    EntityTypeHazard    EntityType = "hazard"
+    EntityTypeCyber     EntityType = "cyber"
+)
+
+// Geometry is a GeoJSON geometry object.
+// Only Point, Polygon, and LineString are supported in v1.
+type Geometry struct {
+    Type        string      `json:"type"`
+    Coordinates interface{} `json:"coordinates"`
+}
+
+type Event struct {
+    EventID      string            `json:"event_id"`
+    SourceID     string            `json:"source_id"`
+    SourceClass  SourceClass       `json:"source_class"`
+    EntityType   EntityType        `json:"entity_type"`
+    ObservedAt   time.Time         `json:"observed_at"`
+    ReceivedAt   time.Time         `json:"received_at"`
+    Geometry     *Geometry         `json:"geometry,omitempty"`
+    Precision    PrecisionType     `json:"precision"`
+    Confidence   ConfidenceType    `json:"confidence"`
+    Severity     SeverityType      `json:"severity"`
+    Title        string            `json:"title"`
+    Description  string            `json:"description"`
+    Properties   map[string]any    `json:"properties"`
+    RawRef       string            `json:"raw_ref,omitempty"`
+    LicenseLabel string            `json:"license_label"`
+}
+
+------------------------------------------------------------------------
+File: /internal/model/provider.go
+------------------------------------------------------------------------
+
+package model
+
+import (
+    "context"
+    "time"
+)
+
+type ProviderStatus struct {
+    ProviderID   string    `json:"provider_id"`
+    DisplayName  string    `json:"display_name"`
+    Status       string    `json:"status"`  // "ok" | "degraded" | "down" | "unconfigured"
+    LastOK       time.Time `json:"last_ok"`
+    LastError    string    `json:"last_error,omitempty"`
+    PollCount    int64     `json:"poll_count"`
+    ErrorCount   int64     `json:"error_count"`
+}
+
+type Provider interface {
+    ID()          string
+    Name()        string
+    Category()    string
+    PollInterval() time.Duration
+    Poll(ctx context.Context) ([]Event, error)
+    Status()      ProviderStatus
+}
+
+------------------------------------------------------------------------
+SQLite Schema: /internal/storage/schema.sql
+------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS events (
+    event_id      TEXT PRIMARY KEY,
+    source_id     TEXT NOT NULL,
+    source_class  TEXT NOT NULL,
+    entity_type   TEXT NOT NULL,
+    observed_at   TEXT NOT NULL,
+    received_at   TEXT NOT NULL,
+    geometry_json TEXT,
+    precision     TEXT NOT NULL DEFAULT 'unknown',
+    confidence    TEXT NOT NULL DEFAULT 'signal',
+    severity      TEXT NOT NULL DEFAULT 'info',
+    title         TEXT NOT NULL DEFAULT '',
+    description   TEXT NOT NULL DEFAULT '',
+    properties    TEXT,
+    license_label TEXT NOT NULL DEFAULT ''
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+    title,
+    description,
+    content='events',
+    content_rowid='rowid'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS events_rtree USING rtree(
+    id,
+    min_lat, max_lat,
+    min_lon, max_lon
+);
+
+CREATE TABLE IF NOT EXISTS positions (
+    entity_id    TEXT NOT NULL,
+    entity_type  TEXT NOT NULL,
+    source_id    TEXT NOT NULL,
+    lat          REAL NOT NULL,
+    lon          REAL NOT NULL,
+    heading      REAL,
+    altitude_m   REAL,
+    speed_ms     REAL,
+    properties   TEXT,
+    last_updated TEXT NOT NULL,
+    is_stale     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (entity_id, entity_type)
+);
+
+CREATE TABLE IF NOT EXISTS source_health (
+    provider_id  TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'unconfigured',
+    last_ok      TEXT,
+    last_error   TEXT,
+    poll_count   INTEGER NOT NULL DEFAULT 0,
+    error_count  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS saved_areas (
+    area_id          TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    area_type        TEXT NOT NULL DEFAULT 'radius',
+    lat              REAL,
+    lon              REAL,
+    radius_km        REAL,
+    geometry_json    TEXT,
+    severity_min     TEXT NOT NULL DEFAULT 'moderate',
+    in_app_notify    INTEGER NOT NULL DEFAULT 0,
+    user_alerts_enabled INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS alert_log (
+    log_id      TEXT PRIMARY KEY,
+    area_id     TEXT NOT NULL,
+    event_id    TEXT NOT NULL,
+    matched_at  TEXT NOT NULL,
+    delivered   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_source_id    ON events(source_id);
+CREATE INDEX IF NOT EXISTS idx_events_entity_type  ON events(entity_type);
+CREATE INDEX IF NOT EXISTS idx_events_received_at  ON events(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_positions_type      ON positions(entity_type);
+CREATE INDEX IF NOT EXISTS idx_alert_log_area      ON alert_log(area_id);
+
+================================================================================
+PART 7 — THE OPENAPI CONTRACT SKELETON
+================================================================================
+
+The Backend Agent writes this file as /api/openapi.yaml in Week 1.
+This skeleton must be expanded with full request/response schemas.
+Every endpoint listed here must be implemented before Week 2 begins.
+
+openapi: "3.1.0"
+info:
+  title: SENTINEL API
+  version: "1.0"
+  description: Internal API for SENTINEL world dashboard
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+
+  /api/events:
+    get:
+      summary: List events
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 500 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: entity_type
+          in: query
+          schema: { type: string }
+        - name: source_id
+          in: query
+          schema: { type: string }
+        - name: severity_min
+          in: query
+          schema: { type: string, enum: [info, minor, moderate, severe, extreme] }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: '#/components/schemas/Event' } }
+                  total: { type: integer }
+
+  /api/events/{id}:
+    get:
+      summary: Get single event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        "404":
+          description: Not found
+
+  /api/positions:
+    get:
+      summary: Current tracked positions
+      parameters:
+        - name: entity_type
+          in: query
+          schema: { type: string }
+        - name: operator_id
+          in: query
+          schema: { type: string }
+        - name: max_entities
+          in: query
+          schema: { type: integer, default: 500, maximum: 5000 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  positions: { type: array, items: { $ref: '#/components/schemas/Position' } }
+
+  /api/search:
+    get:
+      summary: Full-text search events
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results: { type: array, items: { $ref: '#/components/schemas/Event' } }
+
+  /api/sources:
+    get:
+      summary: List all registered providers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources: { type: array, items: { $ref: '#/components/schemas/ProviderStatus' } }
+
+  /api/health:
+    get:
+      summary: System health summary
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degraded, down] }
+                  providers_ok: { type: integer }
+                  providers_degraded: { type: integer }
+                  providers_down: { type: integer }
+                  db_ok: { type: boolean }
+                  event_log_ok: { type: boolean }
+
+  /api/areas:
+    get:
+      summary: List saved areas
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areas: { type: array, items: { $ref: '#/components/schemas/SavedArea' } }
+    post:
+      summary: Create a saved area
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SavedAreaCreate' }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedArea' }
+
+  /api/areas/{id}:
+    delete:
+      summary: Delete a saved area
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /api/transport/operators:
+    get:
+      summary: List transport operators from registry
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  operators: { type: array, items: { $ref: '#/components/schemas/TransportOperator' } }
+
+  /api/stream:
+    get:
+      summary: SSE event stream
+      description: |
+        Server-Sent Events stream. Clients should use EventSource API.
+        Event types emitted:
+          event: event — new canonical event (data: Event JSON)
+          event: position — position update (data: Position JSON)
+          event: alert — alert rule match (data: AlertMatch JSON)
+          event: health — provider health change (data: ProviderStatus JSON)
+          event: ping — keepalive (data: {})
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  schemas:
+    Event:
+      type: object
+      required: [event_id, source_id, source_class, entity_type,
+                 observed_at, received_at, precision, confidence,
+                 severity, title, license_label]
+      properties:
+        event_id:      { type: string }
+        source_id:     { type: string }
+        source_class:  { type: string, enum: [official_government, official_public_authority, community, commercial_optional, custom_user, inferred_derived] }
+        entity_type:   { type: string, enum: [alert, aircraft, vehicle, satellite, hazard, cyber] }
+        observed_at:   { type: string, format: date-time }
+        received_at:   { type: string, format: date-time }
+        geometry:      { type: object, nullable: true }
+        precision:     { type: string, enum: [exact, polygon_area, approximate, text_inferred, unknown] }
+        confidence:    { type: string, enum: [signal, anomaly, corroborated, officially_confirmed] }
+        severity:      { type: string, enum: [info, minor, moderate, severe, extreme] }
+        title:         { type: string }
+        description:   { type: string }
+        properties:    { type: object }
+        license_label: { type: string }
+
+    Position:
+      type: object
+      required: [entity_id, entity_type, lat, lon, last_updated]
+      properties:
+        entity_id:    { type: string }
+        entity_type:  { type: string }
+        source_id:    { type: string }
+        lat:          { type: number }
+        lon:          { type: number }
+        heading:      { type: number, nullable: true }
+        altitude_m:   { type: number, nullable: true }
+        speed_ms:     { type: number, nullable: true }
+        properties:   { type: object }
+        last_updated: { type: string, format: date-time }
+        is_stale:     { type: boolean }
+
+    ProviderStatus:
+      type: object
+      properties:
+        provider_id:  { type: string }
+        display_name: { type: string }
+        status:       { type: string, enum: [ok, degraded, down, unconfigured] }
+        last_ok:      { type: string, format: date-time, nullable: true }
+        last_error:   { type: string, nullable: true }
+        poll_count:   { type: integer }
+        error_count:  { type: integer }
+
+    SavedArea:
+      type: object
+      properties:
+        area_id:            { type: string }
+        name:               { type: string }
+        area_type:          { type: string, enum: [radius] }
+        lat:                { type: number }
+        lon:                { type: number }
+        radius_km:          { type: number }
+        severity_min:       { type: string }
+        in_app_notify:      { type: boolean }
+        user_alerts_enabled: { type: boolean }
+        created_at:         { type: string, format: date-time }
+
+    SavedAreaCreate:
+      type: object
+      required: [name, lat, lon, radius_km]
+      properties:
+        name:               { type: string }
+        lat:                { type: number }
+        lon:                { type: number }
+        radius_km:          { type: number }
+        severity_min:       { type: string, default: moderate }
+        in_app_notify:      { type: boolean, default: false }
+        user_alerts_enabled: { type: boolean, default: false }
+
+    TransportOperator:
+      type: object
+      properties:
+        operator_id:        { type: string }
+        display_name:       { type: string }
+        country:            { type: string }
+        city:               { type: string }
+        mode:               { type: array, items: { type: string } }
+        requires_key:       { type: boolean }
+        key_path:           { type: string, nullable: true }
+        enabled_by_default: { type: boolean }
+
+    AlertMatch:
+      type: object
+      properties:
+        area_id:    { type: string }
+        area_name:  { type: string }
+        event_id:   { type: string }
+        event:      { $ref: '#/components/schemas/Event' }
+        matched_at: { type: string, format: date-time }
+
+================================================================================
+PART 8 — DIRECTORY STRUCTURE TO CREATE
+================================================================================
+
+Create this exact directory structure at project start.
+The Backend Agent creates all directories in Week 1 before writing any code.
+
+sentinel/
+├── api/
+│   └── openapi.yaml                    (Backend Agent — write first)
+├── cmd/
+│   └── sentinel/
+│       └── main.go                     (Backend Agent)
+├── data/
+│   └── transport_registry.json         (Data-Infra Agent)
+├── internal/
+│   ├── alert/
+│   │   └── engine.go                   (Backend Agent)
+│   ├── api/
+│   │   ├── handlers.go                 (Backend Agent)
+│   │   └── sse.go                      (Backend Agent)
+│   ├── core/
+│   │   └── config.go                   (Backend Agent)
+│   ├── geo/
+│   │   └── precision.go                (Backend Agent)
+│   ├── ingest/
+│   │   └── loop.go                     (Data-Infra Agent)
+│   ├── model/
+│   │   ├── event.go                    (Backend Agent — struct definition)
+│   │   └── provider.go                 (Backend Agent — interface definition)
+│   ├── providers/
+│   │   ├── cloudflare_radar/
+│   │   │   └── cloudflare_radar.go     (Data-Infra Agent)
+│   │   ├── gtfsrt/
+│   │   │   └── gtfsrt.go               (Data-Infra Agent)
+│   │   ├── noaa_cap/
+│   │   │   └── noaa_cap.go             (Data-Infra Agent)
+│   │   ├── opensky/
+│   │   │   └── opensky.go              (Data-Infra Agent)
+│   │   └── usgs/
+│   │       └── usgs.go                 (Data-Infra Agent)
+│   └── storage/
+│       ├── db.go                       (Backend Agent)
+│       ├── eventlog.go                 (Backend Agent)
+│       ├── queries.go                  (Backend Agent)
+│       └── schema.sql                  (Backend Agent)
+├── testdata/
+│   ├── usgs/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   ├── noaa_cap/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   ├── opensky/
+│   │   ├── input.json
+│   │   └── expected_output.json
+│   └── gtfsrt/
+│       ├── input.bin                   (binary protobuf)
+│       └── expected_output.json
+├── web/
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── App.tsx
+│       ├── types/
+│       │   └── api.ts
+│       ├── hooks/
+│       │   ├── useEvents.ts
+│       │   ├── usePositions.ts
+│       │   └── useSSE.ts
+│       ├── components/
+│       │   ├── SourceBadge.tsx
+│       │   ├── PrecisionBadge.tsx
+│       │   ├── FreshnessLabel.tsx
+│       │   └── Toast.tsx
+│       ├── globe/
+│       │   └── SentinelGlobe.tsx
+│       ├── map/
+│       │   └── SentinelMap2D.tsx
+│       ├── list/
+│       │   └── EventList.tsx
+│       ├── alerts/
+│       │   └── AlertToast.tsx
+│       ├── areas/
+│       │   └── SavedAreas.tsx
+│       ├── health/
+│       │   └── SourceHealth.tsx
+│       └── onboarding/
+│           └── FirstRunCard.tsx
+├── go.mod
+├── go.sum
+├── Makefile
+├── install.sh
+└── README.md
