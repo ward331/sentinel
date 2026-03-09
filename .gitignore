@@ -36,3 +36,9 @@ AGENTS.md
 HEARTBEAT.md
 IDENTITY.md
 nohup.out
+sentinel
+sentinel.exe
+memory/
+skills/
+dist/
+*.out
