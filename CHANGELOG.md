@@ -128,6 +128,38 @@ Beginning 11-stage V2 build process as per SENTINEL_V2_MASTER_INSTRUCTIONS.md
 - **Files Updated**: `internal/backup/backup.go`, `sentinel_dashboard.html`, `cesium_test.html`, `direct_cesium_test.html`, `final_globe_test.html`
 - **Git Setup**: Repository initialized, committed baseline, connected to GitHub, pushed successfully
 - **Secrets Audit**: Passed - no hardcoded credentials found
-- **Next**: Stage 2 - Single Binary & Embedded Web Assets
+- **Security**: Agent personal files removed from git history using `git filter-repo`
 
-Now continuing with Stage 2...
+### Stage 2 Progress - CLI Flags Implementation ✅
+
+**2-A: CLI Flags - COMPLETE**
+- **File**: `cmd/sentinel/main.go` (V2 version)
+- **Flags Implemented**:
+  - `--config`: Path to config file
+  - `--data-dir`: Override data directory
+  - `--port`: Server port
+  - `--host`: Bind host
+  - `--setup`: Force re-run setup wizard
+  - `--no-browser`: Don't auto-open browser
+  - `--version`: Print version and exit
+  - `--install-service`: Install as system service
+  - `--uninstall-service`: Remove system service
+  - `--export-config`: Print config (secrets redacted)
+  - `--check-config`: Validate config file and exit
+  - `--debug`: Enable debug logging
+  - `--no-tray`: Don't show system tray icon
+
+**Features**:
+- ✅ Binary compiles successfully
+- ✅ Version flag works (`./sentinel --version`)
+- ✅ Help flag works (`./sentinel --help`)
+- ✅ Config loading with V1/V2 migration path
+- ✅ Platform-specific default directories
+
+**Simplifications for Build Progress**:
+- Poller disabled (will be implemented in Stage 3)
+- Backup system disabled (will be implemented in Stage 3)
+- Data infrastructure disabled (will be implemented in Stage 3)
+- System tray stubbed (will be implemented in 2-C)
+
+**Next**: Continue with Stage 2-B: Service Installer
