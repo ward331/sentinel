@@ -30,3 +30,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+SOUL.md
+USER.md
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+nohup.out
