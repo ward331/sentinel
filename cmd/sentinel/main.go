@@ -7,12 +7,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/openclaw/sentinel-backend/internal/api"
 	"github.com/openclaw/sentinel-backend/internal/config"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
+	"github.com/openclaw/sentinel-backend/internal/poller"
+	"github.com/openclaw/sentinel-backend/internal/provider"
 	"github.com/openclaw/sentinel-backend/internal/storage"
 )
 
@@ -76,10 +80,10 @@ func loadConfig() (*config.Config, error) {
 	return config.MigrateFromV1(v1Config), nil
 }
 
-// startServer starts the HTTP server
+// startServer starts the HTTP server with poller integration
 func startServer(cfg *config.Config) error {
 	// Initialize storage
-	store, err := storage.NewWithConfig(cfg.DataDir+"/sentinel.db", true, 10)
+	store, err := storage.NewWithConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
@@ -98,7 +102,18 @@ func startServer(cfg *config.Config) error {
 	// Create metrics and health registry
 	metrics := metrics.NewMetrics()
 	healthRegistry := health.NewHealthRegistry()
-	
+
+	// Create and start poller
+	poller := initializePoller(store, cfg)
+	if poller != nil {
+		if err := poller.Start(); err != nil {
+			log.Printf("Warning: Failed to start poller: %v", err)
+		} else {
+			defer poller.Stop()
+			log.Printf("Poller started with %d providers", len(poller.GetProviderNames()))
+		}
+	}
+
 	// Create API handler and router
 	apiHandler := api.NewHandler(store, metrics, healthRegistry)
 	router := apiHandler.Router()
@@ -115,20 +130,79 @@ func startServer(cfg *config.Config) error {
 
 	log.Printf("Starting SENTINEL server on %s", srv.Addr)
 	log.Printf("Data directory: %s", cfg.DataDir)
+	log.Printf("Providers registered: %d", len(poller.GetProviderNames()))
 	
 	// Start server in background
+	serverErr := make(chan error, 1)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
+			serverErr <- err
 		}
 	}()
 
 	// Wait for interrupt signal
-	<-context.Background().Done()
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	
+	select {
+	case sig := <-sigChan:
+		log.Printf("Received signal %v, shutting down...", sig)
+	case err := <-serverErr:
+		log.Printf("Server error: %v", err)
+	}
 	
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
-	return srv.Shutdown(ctx)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+	
+	log.Println("Server shutdown complete")
+	return nil
+}
+
+// initializePoller creates and registers all providers with the poller
+func initializePoller(store storage.Storage, cfg *config.Config) *poller.Poller {
+	p := poller.NewPoller(store)
+	
+	// Create provider config from main config
+	providerConfig := &provider.Config{
+		Enabled: true,
+	}
+	
+	// Register all 25 providers
+	registerProvider(p, "usgs", provider.NewUSGSProvider(providerConfig))
+	registerProvider(p, "gdacs", provider.NewGDACSProvider(providerConfig))
+	registerProvider(p, "noaa_cap", provider.NewNOAACAPProvider(providerConfig))
+	registerProvider(p, "noaa_nws", provider.NewNOAANWSProvider(providerConfig))
+	registerProvider(p, "tsunami", provider.NewTsunamiProvider(providerConfig))
+	registerProvider(p, "volcano", provider.NewVolcanoProvider(providerConfig))
+	registerProvider(p, "reliefweb", provider.NewReliefWebProvider(providerConfig))
+	registerProvider(p, "opensky", provider.NewOpenSkyEnhancedProvider(providerConfig))
+	registerProvider(p, "airplanes_live", provider.NewAirplanesLiveProvider(providerConfig))
+	registerProvider(p, "adsb_one", provider.NewADSBOneProvider(providerConfig))
+	registerProvider(p, "openmeteo", provider.NewOpenMeteoProvider(providerConfig))
+	registerProvider(p, "iranconflict", provider.NewIranConflictProvider(providerConfig))
+	registerProvider(p, "liveuamap", provider.NewLiveUAMapProvider(providerConfig))
+	registerProvider(p, "gdelt", provider.NewGDELTProvider(providerConfig))
+	registerProvider(p, "opensanctions", provider.NewOpenSanctionsProvider(providerConfig))
+	registerProvider(p, "globalforestwatch", provider.NewGlobalForestWatchProvider(providerConfig))
+	registerProvider(p, "globalfishingwatch", provider.NewGlobalFishingWatchProvider(providerConfig))
+	registerProvider(p, "celestrak", provider.NewCelesTrakProvider(providerConfig))
+	registerProvider(p, "swpc", provider.NewSWPCProvider(providerConfig))
+	registerProvider(p, "who", provider.NewWHOProvider(providerConfig))
+	registerProvider(p, "promed", provider.NewProMEDProvider(providerConfig))
+	registerProvider(p, "nasa_firms", provider.NewNASAFIRMSProvider(providerConfig))
+	registerProvider(p, "piracy_imb", provider.NewPiracyIMBProvider(providerConfig))
+	registerProvider(p, "financial_markets", provider.NewFinancialMarketsProvider(providerConfig))
+	
+	return p
+}
+
+// registerProvider registers a provider with the poller
+func registerProvider(p *poller.Poller, name string, prov provider.Provider) {
+	p.RegisterProvider(name, prov)
+	log.Printf("Registered provider: %s (interval: %v)", name, prov.Interval())
 }
