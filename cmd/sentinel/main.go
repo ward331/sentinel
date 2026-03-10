@@ -19,7 +19,6 @@ import (
 	"github.com/openclaw/sentinel-backend/internal/poller"
 	"github.com/openclaw/sentinel-backend/internal/provider"
 	"github.com/openclaw/sentinel-backend/internal/storage"
-	"github.com/openclaw/sentinel-backend/internal/storage"
 )
 
 var (
@@ -116,17 +115,11 @@ func startServer(cfg *config.Config) error {
 	router := apiHandler.Router()
 
 	// Initialize OSINT storage and add routes
-	osintStorage, err := storage.NewOSINTStorage(dbPath)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize OSINT storage: %v", err)
-		log.Printf("OSINT resources API will not be available")
-	} else {
-		defer osintStorage.Close()
-		osintHandler := api.NewOSINTResourcesHandler(osintStorage)
-		osintRouter := router.PathPrefix("/api/osint").Subrouter()
-		osintHandler.RegisterRoutes(osintRouter)
-		log.Printf("OSINT resources API initialized")
-	}
+	osintStorage := storage.NewOSINTStorage(store.DB())
+	osintHandler := api.NewOSINTResourcesHandler(osintStorage)
+	osintRouter := router.PathPrefix("/api/osint").Subrouter()
+	osintHandler.RegisterRoutes(osintRouter)
+	log.Printf("OSINT resources API initialized")
 
 	// Create HTTP server
 	server := &http.Server{

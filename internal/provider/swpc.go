@@ -739,13 +739,13 @@ func (p *SWPCProvider) generateFlareBadges(flare GOESXrayFlare) []model.Badge {
 	}
 	
 	// Add intensity badge
-	if flare.MaxClass[0:1] == "X" {
+	if len(flare.MaxClass) > 0 && flare.MaxClass[0:1] == "X" {
 		badges = append(badges, model.Badge{
 			Label:     "Major Flare",
 			Type:      "intensity",
 			Timestamp: t,
 		})
-	} else if flare.MaxClass[0:1] == "M" {
+	} else if len(flare.MaxClass) > 0 && flare.MaxClass[0:1] == "M" {
 		badges = append(badges, model.Badge{
 			Label:     "Moderate Flare",
 			Type:      "intensity",
