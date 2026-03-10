@@ -21,7 +21,7 @@ build_for() {
     echo "Building for $os/$arch..."
     
     GOOS=$os GOARCH=$arch /usr/local/go/bin/go build \
-        -ldflags="-X main.version=$VERSION" \
+        -ldflags="-X main.Version=$VERSION" \
         -o "$BUILD_DIR/$output_name" \
         ./cmd/sentinel
     
