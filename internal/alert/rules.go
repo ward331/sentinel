@@ -216,10 +216,17 @@ func (e *RuleEngine) executeActions(event *model.Event, rule Rule) {
 		case "webhook":
 			e.executeWebhookAction(event, rule, action)
 			
+		case "slack":
+			e.executeSlackAction(event, rule, action)
+			
+		case "discord":
+			e.executeDiscordAction(event, rule, action)
+			
+		case "teams":
+			e.executeTeamsAction(event, rule, action)
+			
 		case "email":
-			// TODO: Implement email action
-			fmt.Printf("[ALERT] Email would be sent for rule '%s' (event: %s)\n", 
-				rule.Name, event.ID)
+			e.executeEmailAction(event, rule, action)
 		}
 	}
 }
@@ -270,6 +277,224 @@ func (e *RuleEngine) executeWebhookAction(event *model.Event, rule Rule, action 
 	}
 }
 
+// executeEmailAction sends an email notification
+func (e *RuleEngine) executeEmailAction(event *model.Event, rule Rule, action Action) {
+	// For now, just log that email would be sent
+	// In a full implementation, this would use SMTP configuration
+	// from the global config and send actual emails
+	
+	to := action.Config["to"]
+	if to == "" {
+		to = "admin@example.com"
+	}
+	
+	subject := fmt.Sprintf("[SENTINEL ALERT] %s: %s", rule.Name, event.Title)
+	body := fmt.Sprintf(`
+Alert Rule: %s
+Event: %s
+Source: %s
+Category: %s
+Severity: %s
+Magnitude: %.2f
+Time: %s
+Location: %.4f, %.4f
+Description: %s
+
+Full event details available in SENTINEL dashboard.
+`,
+		rule.Name,
+		event.Title,
+		event.Source,
+		event.Category,
+		event.Severity,
+		event.Magnitude,
+		event.OccurredAt.Format("2006-01-02 15:04:05 UTC"),
+		e.formatLocation(event.Location),
+		event.Description,
+	)
+	
+	fmt.Printf("[ALERT] Email would be sent to %s for rule '%s'\n", to, rule.Name)
+	fmt.Printf("Subject: %s\n", subject)
+	fmt.Printf("Body: %s\n", body)
+	
+	// TODO: Integrate with actual SMTP configuration
+	// This is a placeholder implementation
+}
+
+// executeSlackAction sends a notification to Slack
+func (e *RuleEngine) executeSlackAction(event *model.Event, rule Rule, action Action) {
+	webhookURL, ok := action.Config["webhook_url"]
+	if !ok || webhookURL == "" {
+		fmt.Printf("[ALERT] Slack action missing webhook_url for rule '%s'\n", rule.Name)
+		return
+	}
+	
+	channel := action.Config["channel"]
+	if channel == "" {
+		channel = "#alerts"
+	}
+	
+	// Slack webhook payload
+	payload := map[string]interface{}{
+		"channel": channel,
+		"text": fmt.Sprintf("🚨 *%s Alert*\n*Event:* %s\n*Source:* %s\n*Severity:* %s\n*Time:* %s\n*Rule:* %s",
+			rule.Name,
+			event.Title,
+			event.Source,
+			event.Severity,
+			event.OccurredAt.Format("2006-01-02 15:04:05 UTC"),
+			rule.Name,
+		),
+		"attachments": []map[string]interface{}{
+			{
+				"color": e.getSeverityColor(event.Severity),
+				"fields": []map[string]string{
+					{"title": "Category", "value": event.Category, "short": "true"},
+					{"title": "Magnitude", "value": fmt.Sprintf("%.2f", event.Magnitude), "short": "true"},
+					{"title": "Location", "value": e.formatLocation(event.Location), "short": "false"},
+					{"title": "Description", "value": event.Description, "short": "false"},
+				},
+			},
+		},
+	}
+	
+	e.sendJSONWebhook(webhookURL, payload, "Slack")
+}
+
+// executeDiscordAction sends a notification to Discord
+func (e *RuleEngine) executeDiscordAction(event *model.Event, rule Rule, action Action) {
+	webhookURL, ok := action.Config["webhook_url"]
+	if !ok || webhookURL == "" {
+		fmt.Printf("[ALERT] Discord action missing webhook_url for rule '%s'\n", rule.Name)
+		return
+	}
+	
+	// Discord webhook payload
+	payload := map[string]interface{}{
+		"content": fmt.Sprintf("🚨 **%s Alert**", rule.Name),
+		"embeds": []map[string]interface{}{
+			{
+				"title":       event.Title,
+				"description": event.Description,
+				"color":       e.getSeverityColorDecimal(event.Severity),
+				"fields": []map[string]interface{}{
+					{"name": "Source", "value": event.Source, "inline": "true"},
+					{"name": "Category", "value": event.Category, "inline": "true"},
+					{"name": "Severity", "value": string(event.Severity), "inline": "true"},
+					{"name": "Magnitude", "value": fmt.Sprintf("%.2f", event.Magnitude), "inline": "true"},
+					{"name": "Time", "value": event.OccurredAt.Format("2006-01-02 15:04:05 UTC"), "inline": "false"},
+					{"name": "Location", "value": e.formatLocation(event.Location), "inline": "false"},
+				},
+				"footer": map[string]string{
+					"text": fmt.Sprintf("Rule: %s | Event ID: %s", rule.Name, event.ID),
+				},
+				"timestamp": event.OccurredAt.Format(time.RFC3339),
+			},
+		},
+	}
+	
+	e.sendJSONWebhook(webhookURL, payload, "Discord")
+}
+
+// executeTeamsAction sends a notification to Microsoft Teams
+func (e *RuleEngine) executeTeamsAction(event *model.Event, rule Rule, action Action) {
+	webhookURL, ok := action.Config["webhook_url"]
+	if !ok || webhookURL == "" {
+		fmt.Printf("[ALERT] Teams action missing webhook_url for rule '%s'\n", rule.Name)
+		return
+	}
+	
+	// Microsoft Teams webhook payload
+	payload := map[string]interface{}{
+		"@type": "MessageCard",
+		"@context": "http://schema.org/extensions",
+		"themeColor": e.getSeverityColor(event.Severity),
+		"summary": fmt.Sprintf("%s Alert: %s", rule.Name, event.Title),
+		"sections": []map[string]interface{}{
+			{
+				"activityTitle": fmt.Sprintf("🚨 %s Alert", rule.Name),
+				"activitySubtitle": event.Title,
+				"facts": []map[string]string{
+					{"name": "Source", "value": event.Source},
+					{"name": "Category", "value": event.Category},
+					{"name": "Severity", "value": string(event.Severity)},
+					{"name": "Magnitude", "value": fmt.Sprintf("%.2f", event.Magnitude)},
+					{"name": "Time", "value": event.OccurredAt.Format("2006-01-02 15:04:05 UTC")},
+					{"name": "Location", "value": e.formatLocation(event.Location)},
+				},
+				"text": event.Description,
+			},
+		},
+		"potentialAction": []map[string]interface{}{
+			{
+				"@type": "OpenUri",
+				"name": "View in Dashboard",
+				"targets": []map[string]string{
+					{"os": "default", "uri": fmt.Sprintf("http://localhost:8080/events/%s", event.ID)},
+				},
+			},
+		},
+	}
+	
+	e.sendJSONWebhook(webhookURL, payload, "Teams")
+}
+
+// sendJSONWebhook sends a JSON payload to a webhook URL
+func (e *RuleEngine) sendJSONWebhook(url string, payload map[string]interface{}, service string) {
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("[ALERT] Failed to marshal %s webhook payload: %v\n", service, err)
+		return
+	}
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("[ALERT] Failed to send %s webhook: %v\n", service, err)
+		return
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		fmt.Printf("[ALERT] %s webhook sent successfully (status: %d)\n", service, resp.StatusCode)
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Printf("[ALERT] %s webhook failed: %d - %s\n", service, resp.StatusCode, string(body))
+	}
+}
+
+// getSeverityColor returns a color for Slack/Teams based on severity
+func (e *RuleEngine) getSeverityColor(severity model.Severity) string {
+	switch severity {
+	case model.SeverityCritical:
+		return "#ff0000" // Red
+	case model.SeverityHigh:
+		return "#ff9900" // Orange
+	case model.SeverityMedium:
+		return "#ffff00" // Yellow
+	case model.SeverityLow:
+		return "#00ff00" // Green
+	default:
+		return "#808080" // Gray
+	}
+}
+
+// getSeverityColorDecimal returns a decimal color for Discord
+func (e *RuleEngine) getSeverityColorDecimal(severity model.Severity) int {
+	switch severity {
+	case model.SeverityCritical:
+		return 16711680 // Red
+	case model.SeverityHigh:
+		return 16753920 // Orange
+	case model.SeverityMedium:
+		return 16776960 // Yellow
+	case model.SeverityLow:
+		return 65280    // Green
+	default:
+		return 8421504  // Gray
+	}
+}
+
 // GetRules returns all rules
 func (e *RuleEngine) GetRules() []Rule {
 	return e.rules
@@ -310,4 +535,17 @@ func (e *RuleEngine) DeleteRule(id string) bool {
 		}
 	}
 	return false
+}
+
+// formatLocation formats a Location struct into a readable string
+func (e *RuleEngine) formatLocation(loc model.Location) string {
+	if loc.Type == "Point" {
+		// Coordinates should be [lon, lat] for Point
+		if coords, ok := loc.Coordinates.([]interface{}); ok && len(coords) >= 2 {
+			lon, _ := coords[0].(float64)
+			lat, _ := coords[1].(float64)
+			return fmt.Sprintf("%.4f, %.4f", lat, lon)
+		}
+	}
+	return "Unknown location"
 }
