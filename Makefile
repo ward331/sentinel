@@ -48,16 +48,25 @@ clean:
 	rm -f $(DB_PATH) $(DB_PATH)-shm $(DB_PATH)-wal
 	rm -rf dist/
 
-# Smoke test - end-to-end test of the walking skeleton
+# Smoke test - end-to-end test of the walking skeleton (V2 with CLI flags)
 smoke: build
-	@echo "Starting smoke test..."; \
-	echo "Starting server..."; \
-	SENTINEL_DB_PATH=$(DB_PATH) SENTINEL_HTTP_PORT=$(HTTP_PORT) ./$(BINARY_NAME) & \
+	@echo "Starting smoke test (V2 with CLI flags)..."; \
+	TEST_DATA_DIR="/tmp/sentinel_smoke_$$(date +%s)"; \
+	mkdir -p "$$TEST_DATA_DIR"; \
+	echo "Starting server with data-dir=$$TEST_DATA_DIR, port=$(HTTP_PORT)..."; \
+	./$(BINARY_NAME) --data-dir "$$TEST_DATA_DIR" --port $(HTTP_PORT) & \
 	SERVER_PID=$$!; \
 	echo "Waiting for server to start..."; \
 	sleep 5; \
 	echo "Checking server health..."; \
-	curl -f -s http://$(HTTP_HOST):$(HTTP_PORT)/api/health || { echo "Health check failed"; kill $$SERVER_PID 2>/dev/null; exit 1; }; \
+	curl -f -s http://$(HTTP_HOST):$(HTTP_PORT)/api/health || { echo "Health check failed"; kill $$SERVER_PID 2>/dev/null; rm -rf "$$TEST_DATA_DIR"; exit 1; }; \
+	echo "Checking OSINT resources..."; \
+	OSINT_RESPONSE=$$(curl -s http://$(HTTP_HOST):$(HTTP_PORT)/api/osint/resources); \
+	if echo "$$OSINT_RESPONSE" | grep -q '"resources"'; then \
+		echo "OSINT resources API working"; \
+	else \
+		echo "OSINT resources check: $$OSINT_RESPONSE"; \
+	fi; \
 	echo "Creating test earthquake event..."; \
 	RESPONSE=$$(curl -s -X POST http://$(HTTP_HOST):$(HTTP_PORT)/api/events \
 		-H "Content-Type: application/json" \
@@ -67,6 +76,7 @@ smoke: build
 	else \
 		echo "Failed to create event: $$RESPONSE"; \
 		kill $$SERVER_PID 2>/dev/null; \
+		rm -rf "$$TEST_DATA_DIR"; \
 		exit 1; \
 	fi; \
 	echo "Querying events..."; \
@@ -76,6 +86,7 @@ smoke: build
 	else \
 		echo "Events query failed: $$QUERY_RESPONSE"; \
 		kill $$SERVER_PID 2>/dev/null; \
+		rm -rf "$$TEST_DATA_DIR"; \
 		exit 1; \
 	fi; \
 	echo "Testing SSE stream..."; \
@@ -88,10 +99,13 @@ smoke: build
 	echo "Creating second event for SSE test..."; \
 	curl -s -X POST http://$(HTTP_HOST):$(HTTP_PORT)/api/events \
 		-H "Content-Type: application/json" \
-		-d '{"title": "M 4.5 - Central California", "description": "A magnitude 4.5 earthquake in Central California.", "source": "usgs", "occurred_at": "2024-01-01T12:05:00Z", "location": {"type": "Point", "coordinates": [-120.123, 36.456]}, "precision": "exact", "magnitude": 4.5, "category": "earthquake"}' > /dev/null; \
+		-d '{"title": "M 4.5 - Central California", "description": "A magnitude 4.5 earthquake in Central California.", "source": "usgs", "source_id": "hv12345679", "occurred_at": "2024-01-01T12:05:00Z", "location": {"type": "Point", "coordinates": [-120.123, 36.456]}, "precision": "exact", "magnitude": 4.5, "category": "earthquake"}' > /dev/null; \
 	sleep 1; \
 	echo "Stopping server..."; \
 	kill $$SERVER_PID 2>/dev/null || true; \
+	sleep 2; \
+	echo "Cleaning up..."; \
+	rm -rf "$$TEST_DATA_DIR"; \
 	echo "Smoke test PASSED!"
 
 # Install dependencies
