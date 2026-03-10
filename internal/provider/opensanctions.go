@@ -39,6 +39,20 @@ func NewOpenSanctionsProvider(apiKey string) *OpenSanctionsProvider {
 	}
 }
 
+// Name returns the provider identifier
+func (p *OpenSanctionsProvider) Name() string {
+	return "opensanctions"
+}
+
+// Enabled returns whether the provider is enabled
+func (p *OpenSanctionsProvider) Enabled() bool {
+	return true
+}
+
+// Interval returns the polling interval
+func (p *OpenSanctionsProvider) Interval() time.Duration {
+	return 24 * time.Hour // Sanctions data changes slowly
+}
 
 // Fetch retrieves sanctions data from OpenSanctions
 func (p *OpenSanctionsProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

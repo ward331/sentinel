@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -31,6 +30,27 @@ func NewNOAANWSProvider(config *Config) *NOAANWSProvider {
 	}
 }
 
+// Name returns the provider identifier
+func (p *NOAANWSProvider) Name() string {
+	return "noaa_nws"
+}
+
+// Enabled returns whether the provider is enabled
+func (p *NOAANWSProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *NOAANWSProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 // Fetch retrieves active weather alerts from NOAA NWS
 func (p *NOAANWSProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	url := "https://api.weather.gov/alerts/active"
@@ -50,17 +70,12 @@ func (p *NOAANWSProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	}
 	defer resp.Body.Close()
 	
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("NOAA NWS API returned status %d: %s", resp.StatusCode, string(body))
-	}
-	
-	var apiResponse NOAANWSResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+	var response NOAANWSResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode API response: %w", err)
 	}
 	
-	return p.convertToEvents(apiResponse)
+	return p.convertToEvents(response)
 }
 
 // convertToEvents converts NOAA NWS API response to SENTINEL events

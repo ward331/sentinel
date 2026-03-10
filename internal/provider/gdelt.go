@@ -35,6 +35,24 @@ func NewGDELTProvider() *GDELTProvider {
 
 
 // Fetch retrieves GDELT events
+
+// Name returns the provider identifier
+func (p *GDELTProvider) Name() string {
+	return "gdelt"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *GDELTProvider) Enabled() bool {
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *GDELTProvider) Interval() time.Duration {
+	return p.interval
+}
+
 func (p *GDELTProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Get current time in GDELT format (YYYYMMDDHHMMSS)
 	now := time.Now().UTC()

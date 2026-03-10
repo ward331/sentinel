@@ -31,6 +31,29 @@ func NewPiracyIMBProvider(config *Config) *PiracyIMBProvider {
 }
 
 // Fetch retrieves piracy incidents from IMB API
+
+// Enabled returns whether the provider is enabled
+func (p *PiracyIMBProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *PiracyIMBProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
+
+// Name returns the provider identifier
+func (p *PiracyIMBProvider) Name() string {
+	return "piracyimb"
+}
+
 func (p *PiracyIMBProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// IMB Piracy Reporting Centre API (using public data endpoint)
 	// Note: This is a placeholder URL - actual IMB API may require authentication

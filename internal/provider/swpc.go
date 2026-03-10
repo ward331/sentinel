@@ -34,6 +34,29 @@ func NewSWPCProvider(config *Config) *SWPCProvider {
 }
 
 // Fetch retrieves space weather data from SWPC
+
+// Enabled returns whether the provider is enabled
+func (p *SWPCProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *SWPCProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
+
+// Name returns the provider identifier
+func (p *SWPCProvider) Name() string {
+	return "swpc"
+}
+
 func (p *SWPCProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	var allEvents []*model.Event
 	

@@ -31,6 +31,30 @@ func NewADSBOneProvider(config *Config) *ADSBOneProvider {
 }
 
 // Fetch retrieves aircraft data from ADSB.one
+
+// Name returns the provider identifier
+func (p *ADSBOneProvider) Name() string {
+	return "adsbone"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *ADSBOneProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *ADSBOneProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *ADSBOneProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// ADSB.one provides worldwide coverage
 	url := "https://api.adsb.one/v2/aircraft"

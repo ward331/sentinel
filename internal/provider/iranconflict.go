@@ -32,6 +32,24 @@ func NewIranConflictProvider() *IranConflictProvider {
 
 
 // Fetch retrieves Iran conflict data
+
+// Name returns the provider identifier
+func (p *IranConflictProvider) Name() string {
+	return "iranconflict"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *IranConflictProvider) Enabled() bool {
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *IranConflictProvider) Interval() time.Duration {
+	return p.interval
+}
+
 func (p *IranConflictProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Fetch waves.json data
 	waves, err := p.fetchWavesData(ctx)

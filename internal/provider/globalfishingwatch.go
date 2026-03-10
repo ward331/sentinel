@@ -32,6 +32,24 @@ func NewGlobalFishingWatchProvider(apiKey string) *GlobalFishingWatchProvider {
 
 
 // Fetch retrieves vessel events from Global Fishing Watch
+
+// Name returns the provider identifier
+func (p *GlobalFishingWatchProvider) Name() string {
+	return "globalfishingwatch"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *GlobalFishingWatchProvider) Enabled() bool {
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *GlobalFishingWatchProvider) Interval() time.Duration {
+	return p.interval
+}
+
 func (p *GlobalFishingWatchProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Fetch vessel events
 	events, err := p.fetchVesselEvents(ctx)

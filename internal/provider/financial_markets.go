@@ -32,6 +32,27 @@ func NewFinancialMarketsProvider(config *Config) *FinancialMarketsProvider {
 }
 
 // Fetch retrieves financial market data from multiple sources
+// Name returns the provider identifier
+func (p *FinancialMarketsProvider) Name() string {
+	return "financial_markets"
+}
+
+// Enabled returns whether the provider is enabled
+func (p *FinancialMarketsProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *FinancialMarketsProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *FinancialMarketsProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	var allEvents []*model.Event
 	

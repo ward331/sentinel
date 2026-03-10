@@ -33,6 +33,28 @@ func NewOpenSkyEnhancedProvider(db *aircraft.Database) *OpenSkyEnhancedProvider 
 
 
 // Fetch retrieves flight data with aircraft identification
+// Name returns the provider identifier
+
+// Enabled returns whether the provider is enabled
+
+
+// Name returns the provider identifier
+func (p *OpenSkyEnhancedProvider) Name() string {
+	return "openskyenhanced"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *OpenSkyEnhancedProvider) Enabled() bool {
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *OpenSkyEnhancedProvider) Interval() time.Duration {
+	return 5 * time.Minute // Default interval
+}
+
 func (p *OpenSkyEnhancedProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Ensure aircraft database is loaded
 	if !p.db.IsLoaded() {

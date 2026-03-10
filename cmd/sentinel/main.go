@@ -16,6 +16,9 @@ import (
 	"github.com/openclaw/sentinel-backend/internal/config"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
+	"github.com/openclaw/sentinel-backend/internal/poller"
+	"github.com/openclaw/sentinel-backend/internal/provider"
+	"github.com/openclaw/sentinel-backend/internal/storage"
 	"github.com/openclaw/sentinel-backend/internal/storage"
 )
 
@@ -83,7 +86,7 @@ func loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// startServer starts the HTTP server
+// startServer starts the HTTP server with poller integration
 func startServer(cfg *config.Config) error {
 	// Initialize storage
 	dbPath := filepath.Join(cfg.DataDir, "sentinel.db")
@@ -93,6 +96,17 @@ func startServer(cfg *config.Config) error {
 	}
 	defer store.Close()
 
+	// Initialize poller
+	pollerInstance := initializePoller(store, cfg)
+	
+	// Start poller
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
+	pollerInstance.Start()
+	defer pollerInstance.Stop()
+	log.Printf("Poller started with %d providers", len(pollerInstance.GetProviderNames()))
+
 	// Initialize metrics and health
 	metrics := metrics.NewMetrics()
 	healthRegistry := health.NewHealthRegistry()
@@ -100,6 +114,19 @@ func startServer(cfg *config.Config) error {
 	// Create API handler and router
 	apiHandler := api.NewHandler(store, metrics, healthRegistry)
 	router := apiHandler.Router()
+
+	// Initialize OSINT storage and add routes
+	osintStorage, err := storage.NewOSINTStorage(dbPath)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize OSINT storage: %v", err)
+		log.Printf("OSINT resources API will not be available")
+	} else {
+		defer osintStorage.Close()
+		osintHandler := api.NewOSINTResourcesHandler(osintStorage)
+		osintRouter := router.PathPrefix("/api/osint").Subrouter()
+		osintHandler.RegisterRoutes(osintRouter)
+		log.Printf("OSINT resources API initialized")
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -134,7 +161,7 @@ func startServer(cfg *config.Config) error {
 
 	// Graceful shutdown
 	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
@@ -143,4 +170,49 @@ func startServer(cfg *config.Config) error {
 
 	log.Println("Server stopped gracefully")
 	return nil
+}
+
+// initializePoller creates and configures the poller with all providers
+func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller {
+	p := poller.NewPoller(store)
+	
+	// Create provider config from main config
+	providerConfig := &provider.Config{
+		Enabled:      true,
+		PollInterval: 5 * time.Minute, // Default interval
+	}
+	
+	// Register all providers
+	registerProvider(p, "usgs", provider.NewUSGSProvider(providerConfig))
+	registerProvider(p, "gdacs", provider.NewGDACSProvider(providerConfig))
+	registerProvider(p, "noaa_cap", provider.NewNOAACAPProvider(providerConfig))
+	registerProvider(p, "noaa_nws", provider.NewNOAANWSProvider(providerConfig))
+	registerProvider(p, "tsunami", provider.NewTsunamiProvider(providerConfig))
+	registerProvider(p, "volcano", provider.NewVolcanoProvider(providerConfig))
+	registerProvider(p, "reliefweb", provider.NewReliefWebProvider(providerConfig))
+	// registerProvider(p, "opensky", provider.NewOpenSkyEnhancedProvider(nil)) // Requires aircraft database
+	registerProvider(p, "airplanes_live", provider.NewAirplanesLiveProvider(providerConfig))
+	registerProvider(p, "adsb_one", provider.NewADSBOneProvider(providerConfig))
+	registerProvider(p, "openmeteo", provider.NewOpenMeteoProvider())
+	registerProvider(p, "iranconflict", provider.NewIranConflictProvider())
+	registerProvider(p, "liveuamap", provider.NewLiveUAMapProvider(providerConfig))
+	registerProvider(p, "gdelt", provider.NewGDELTProvider())
+	// registerProvider(p, "opensanctions", provider.NewOpenSanctionsProvider("")) // Requires API key
+	registerProvider(p, "globalforestwatch", provider.NewGlobalForestWatchProvider())
+	// registerProvider(p, "globalfishingwatch", provider.NewGlobalFishingWatchProvider("")) // Requires API key
+	registerProvider(p, "celestrak", provider.NewCelesTrakProvider(providerConfig))
+	registerProvider(p, "swpc", provider.NewSWPCProvider(providerConfig))
+	registerProvider(p, "who", provider.NewWHOProvider(providerConfig))
+	registerProvider(p, "promed", provider.NewProMEDProvider(providerConfig))
+	registerProvider(p, "nasa_firms", provider.NewNASAFIRMSProvider(providerConfig))
+	registerProvider(p, "piracy_imb", provider.NewPiracyIMBProvider(providerConfig))
+	registerProvider(p, "financial_markets", provider.NewFinancialMarketsProvider(providerConfig))
+	
+	return p
+}
+
+// registerProvider registers a provider with the poller
+func registerProvider(p *poller.Poller, name string, prov provider.Provider) {
+	p.RegisterProvider(name, prov)
+	log.Printf("Registered provider: %s (interval: %v, enabled: %v)", name, prov.Interval(), prov.Enabled())
 }

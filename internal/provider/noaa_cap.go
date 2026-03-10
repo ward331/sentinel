@@ -32,7 +32,29 @@ func NewNOAACAPProvider(config *Config) *NOAACAPProvider {
 	}
 }
 
+// Name returns the provider identifier
+func (p *NOAACAPProvider) Name() string {
+	return "noaa_cap"
+}
+
 // Fetch retrieves CAP alerts from NOAA
+
+// Enabled returns whether the provider is enabled
+func (p *NOAACAPProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *NOAACAPProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *NOAACAPProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// NOAA CAP feed for US alerts
 	url := "https://alerts.weather.gov/cap/us.php?x=0"

@@ -35,6 +35,30 @@ func NewLiveUAMapProvider(config *Config) *LiveUAMapProvider {
 
 
 // Fetch retrieves conflict events from LiveUAMap RSS
+
+// Name returns the provider identifier
+func (p *LiveUAMapProvider) Name() string {
+	return "liveuamap"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *LiveUAMapProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *LiveUAMapProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *LiveUAMapProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	events, err := p.fetchRSS(ctx)
 	if err != nil {

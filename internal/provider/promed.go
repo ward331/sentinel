@@ -34,6 +34,29 @@ func NewProMEDProvider(config *Config) *ProMEDProvider {
 }
 
 // Fetch retrieves emerging disease reports from ProMED RSS feed
+
+// Enabled returns whether the provider is enabled
+func (p *ProMEDProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *ProMEDProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
+
+// Name returns the provider identifier
+func (p *ProMEDProvider) Name() string {
+	return "promed"
+}
+
 func (p *ProMEDProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// ProMED-mail RSS feed for emerging infectious diseases
 	url := "https://promedmail.org/wp-content/uploads/rss-full.xml"

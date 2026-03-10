@@ -29,6 +29,24 @@ func NewGlobalForestWatchProvider() *GlobalForestWatchProvider {
 
 
 // Fetch retrieves fire alerts from Global Forest Watch
+
+// Name returns the provider identifier
+func (p *GlobalForestWatchProvider) Name() string {
+	return "globalforestwatch"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *GlobalForestWatchProvider) Enabled() bool {
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *GlobalForestWatchProvider) Interval() time.Duration {
+	return p.interval
+}
+
 func (p *GlobalForestWatchProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Fetch VIIRS fire alerts (NASA satellite data)
 	events, err := p.fetchVIIRSFireAlerts(ctx)

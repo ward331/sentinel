@@ -31,6 +31,27 @@ func NewAirplanesLiveProvider(config *Config) *AirplanesLiveProvider {
 }
 
 // Fetch retrieves aircraft data from airplanes.live
+// Enabled returns whether the provider is enabled
+func (p *AirplanesLiveProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+// Interval returns the polling interval
+func (p *AirplanesLiveProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
+// Name returns the provider identifier
+func (p *AirplanesLiveProvider) Name() string {
+	return "airplanes_live"
+}
+
 func (p *AirplanesLiveProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// Get bounding box from config or use worldwide
 	bbox := p.getBoundingBox()

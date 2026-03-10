@@ -32,6 +32,30 @@ func NewCelesTrakProvider(config *Config) *CelesTrakProvider {
 }
 
 // Fetch retrieves satellite tracking data from CelesTrak
+
+// Name returns the provider identifier
+func (p *CelesTrakProvider) Name() string {
+	return "celestrak"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *CelesTrakProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *CelesTrakProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *CelesTrakProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	var allEvents []*model.Event
 	

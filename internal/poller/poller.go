@@ -14,7 +14,7 @@ import (
 
 // Poller manages the scheduling and execution of provider polling
 type Poller struct {
-	storage    storage.Storage
+	storage    *storage.Storage
 	providers  map[string]provider.Provider
 	mu         sync.RWMutex
 	ctx        context.Context
@@ -48,7 +48,7 @@ type ProviderStats struct {
 }
 
 // NewPoller creates a new Poller instance
-func NewPoller(storage storage.Storage) *Poller {
+func NewPoller(storage *storage.Storage) *Poller {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	return &Poller{

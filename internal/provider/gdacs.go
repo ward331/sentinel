@@ -37,7 +37,21 @@ func (p *GDACSProvider) Name() string {
 	return "gdacs"
 }
 
+// Enabled returns whether the provider is enabled
+func (p *GDACSProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
 
+// Interval returns the polling interval
+func (p *GDACSProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
 
 // Fetch retrieves events from the GDACS feed
 func (p *GDACSProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

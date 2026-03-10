@@ -86,6 +86,30 @@ func NewReliefWebProvider(config *Config) *ReliefWebProvider {
 }
 
 // Fetch retrieves disaster reports from ReliefWeb API
+
+// Name returns the provider identifier
+func (p *ReliefWebProvider) Name() string {
+	return "reliefweb"
+}
+
+
+// Enabled returns whether the provider is enabled
+func (p *ReliefWebProvider) Enabled() bool {
+	if p.config != nil {
+		return p.config.Enabled
+	}
+	return true
+}
+
+
+// Interval returns the polling interval
+func (p *ReliefWebProvider) Interval() time.Duration {
+	if p.config != nil && p.config.PollInterval > 0 {
+		return p.config.PollInterval
+	}
+	return 5 * time.Minute // Default interval
+}
+
 func (p *ReliefWebProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// ReliefWeb API endpoint for disasters
 	url := "https://api.reliefweb.int/v1/reports?appname=sentinel&profile=full&limit=50&preset=latest&filter[field]=date.created&filter[value][from]=now-7d"

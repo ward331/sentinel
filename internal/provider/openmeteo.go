@@ -32,7 +32,20 @@ func NewOpenMeteoProvider() *OpenMeteoProvider {
 	}
 }
 
+// Name returns the provider identifier
+func (p *OpenMeteoProvider) Name() string {
+	return "openmeteo"
+}
 
+// Enabled returns whether the provider is enabled
+func (p *OpenMeteoProvider) Enabled() bool {
+	return true
+}
+
+// Interval returns the polling interval
+func (p *OpenMeteoProvider) Interval() time.Duration {
+	return p.interval
+}
 
 // Fetch retrieves weather alerts
 func (p *OpenMeteoProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
