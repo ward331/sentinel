@@ -121,10 +121,41 @@ func startServer(cfg *config.Config) error {
 	osintHandler.RegisterRoutes(osintRouter)
 	log.Printf("OSINT resources API initialized")
 
+	// Note: Filter engine initialization commented out for now
+	// Advanced filtering requires geofence engine and evaluator setup
+	// filterEngine := filter.NewDefaultEngine(store, evaluator, geofenceEngine)
+	// filterHandler := api.NewFilterHandler(filterEngine)
+	// filterRouter := router.PathPrefix("/api/filters").Subrouter()
+	// filterHandler.RegisterRoutes(filterRouter)
+	// log.Printf("Filter API initialized")
+	log.Printf("Filter API: Basic filtering available via query parameters")
+
+	// Apply middleware (order matters: CORS → Rate Limit → Auth → Router)
+	var handler http.Handler = router
+	
+	// Apply CORS middleware
+	handler = api.CORSMiddleware(handler)
+	
+	// Apply rate limiting middleware
+	rateLimitConfig := api.DefaultRateLimitConfig()
+	rateLimitConfig.Enabled = true
+	rateLimitConfig.RPS = 100
+	rateLimitConfig.Burst = 200
+	handler = api.RateLimitMiddleware(rateLimitConfig)(handler)
+	
+	// Apply authentication middleware
+	authConfig := api.DefaultAuthConfig()
+	authConfig.Enabled = false // Disabled by default, enable in production
+	authConfig.APIKeys = []string{"test-api-key-123"} // Example API key
+	handler = api.AuthMiddleware(authConfig)(handler)
+	
+	log.Printf("Security middleware applied: CORS=%v, RateLimit=%v, Auth=%v", 
+		true, rateLimitConfig.Enabled, authConfig.Enabled)
+
 	// Create HTTP server
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      router,
+		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
