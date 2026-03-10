@@ -20,6 +20,22 @@ type WHOProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *WHOProvider) Name() string {
+    return "who"
+}
+
+// Interval returns the polling interval
+func (p *WHOProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *WHOProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewWHOProvider creates a new WHOProvider
 func NewWHOProvider(config *Config) *WHOProvider {
 	return &WHOProvider{

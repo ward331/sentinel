@@ -20,6 +20,22 @@ type GDELTProvider struct {
 	interval time.Duration
 }
 
+// Name returns the provider name
+func (p *GDELTProvider) Name() string {
+    return "gdelt"
+}
+
+// Interval returns the polling interval
+func (p *GDELTProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *GDELTProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewGDELTProvider creates a new GDELT provider
 func NewGDELTProvider() *GDELTProvider {
 	return &GDELTProvider{

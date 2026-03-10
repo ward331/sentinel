@@ -19,6 +19,22 @@ type CelesTrakProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *CelesTrakProvider) Name() string {
+    return "celestrak"
+}
+
+// Interval returns the polling interval
+func (p *CelesTrakProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("15m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *CelesTrakProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewCelesTrakProvider creates a new CelesTrakProvider
 func NewCelesTrakProvider(config *Config) *CelesTrakProvider {
 	return &CelesTrakProvider{

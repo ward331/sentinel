@@ -20,6 +20,22 @@ type OpenMeteoProvider struct {
 	interval time.Duration
 }
 
+// Name returns the provider name
+func (p *OpenMeteoProvider) Name() string {
+    return "openmeteo"
+}
+
+// Interval returns the polling interval
+func (p *OpenMeteoProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("5m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *OpenMeteoProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewOpenMeteoProvider creates a new Open-Meteo provider
 func NewOpenMeteoProvider() *OpenMeteoProvider {
 	return &OpenMeteoProvider{

@@ -19,6 +19,22 @@ type FinancialMarketsProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *FinancialMarketsProvider) Name() string {
+    return "financialmarkets"
+}
+
+// Interval returns the polling interval
+func (p *FinancialMarketsProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *FinancialMarketsProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewFinancialMarketsProvider creates a new FinancialMarketsProvider
 func NewFinancialMarketsProvider(config *Config) *FinancialMarketsProvider {
 	return &FinancialMarketsProvider{

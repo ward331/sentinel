@@ -18,6 +18,22 @@ type TsunamiProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *TsunamiProvider) Name() string {
+    return "tsunami"
+}
+
+// Interval returns the polling interval
+func (p *TsunamiProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *TsunamiProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewTsunamiProvider creates a new TsunamiProvider
 func NewTsunamiProvider(config *Config) *TsunamiProvider {
 	return &TsunamiProvider{

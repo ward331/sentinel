@@ -20,6 +20,22 @@ type PiracyIMBProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *PiracyIMBProvider) Name() string {
+    return "piracyimb"
+}
+
+// Interval returns the polling interval
+func (p *PiracyIMBProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *PiracyIMBProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewPiracyIMBProvider creates a new PiracyIMBProvider
 func NewPiracyIMBProvider(config *Config) *PiracyIMBProvider {
 	return &PiracyIMBProvider{

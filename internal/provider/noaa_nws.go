@@ -18,6 +18,22 @@ type NOAANWSProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *NOAANWSProvider) Name() string {
+    return "noaanws"
+}
+
+// Interval returns the polling interval
+func (p *NOAANWSProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *NOAANWSProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewNOAANWSProvider creates a new NOAANWSProvider
 func NewNOAANWSProvider(config *Config) *NOAANWSProvider {
 	return &NOAANWSProvider{

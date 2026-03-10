@@ -17,6 +17,22 @@ type AirplanesLiveProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *AirplanesLiveProvider) Name() string {
+    return "airplaneslive"
+}
+
+// Interval returns the polling interval
+func (p *AirplanesLiveProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("5s")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *AirplanesLiveProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewAirplanesLiveProvider creates a new AirplanesLiveProvider
 func NewAirplanesLiveProvider(config *Config) *AirplanesLiveProvider {
 	return &AirplanesLiveProvider{

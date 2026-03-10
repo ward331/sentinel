@@ -18,6 +18,22 @@ type ReliefWebProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *ReliefWebProvider) Name() string {
+    return "reliefweb"
+}
+
+// Interval returns the polling interval
+func (p *ReliefWebProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *ReliefWebProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewReliefWebProvider creates a new ReliefWebProvider
 func NewReliefWebProvider(config *Config) *ReliefWebProvider {
 	return &ReliefWebProvider{

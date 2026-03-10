@@ -19,6 +19,22 @@ type USGSProvider struct {
 	client  *http.Client
 }
 
+// Name returns the provider name
+func (p *USGSProvider) Name() string {
+    return "usgs"
+}
+
+// Interval returns the polling interval
+func (p *USGSProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *USGSProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewUSGSProvider creates a new USGS provider
 func NewUSGSProvider() *USGSProvider {
 	return &USGSProvider{

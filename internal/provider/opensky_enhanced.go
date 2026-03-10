@@ -18,6 +18,22 @@ type OpenSkyEnhancedProvider struct {
 	db         *aircraft.Database
 }
 
+// Name returns the provider name
+func (p *OpenSkyEnhancedProvider) Name() string {
+    return "openskyenhanced"
+}
+
+// Interval returns the polling interval
+func (p *OpenSkyEnhancedProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("5s")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *OpenSkyEnhancedProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewOpenSkyEnhancedProvider creates a new enhanced OpenSky provider
 func NewOpenSkyEnhancedProvider(db *aircraft.Database) *OpenSkyEnhancedProvider {
 	return &OpenSkyEnhancedProvider{

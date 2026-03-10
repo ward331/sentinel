@@ -20,6 +20,22 @@ type VolcanoProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *VolcanoProvider) Name() string {
+    return "volcano"
+}
+
+// Interval returns the polling interval
+func (p *VolcanoProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *VolcanoProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewVolcanoProvider creates a new VolcanoProvider
 func NewVolcanoProvider(config *Config) *VolcanoProvider {
 	return &VolcanoProvider{

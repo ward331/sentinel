@@ -19,6 +19,22 @@ type NASAFIRMSProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *NASAFIRMSProvider) Name() string {
+    return "nasafirms"
+}
+
+// Interval returns the polling interval
+func (p *NASAFIRMSProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("15m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *NASAFIRMSProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewNASAFIRMSProvider creates a new NASAFIRMSProvider
 func NewNASAFIRMSProvider(config *Config) *NASAFIRMSProvider {
 	return &NASAFIRMSProvider{

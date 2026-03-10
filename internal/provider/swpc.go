@@ -20,6 +20,22 @@ type SWPCProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *SWPCProvider) Name() string {
+    return "swpc"
+}
+
+// Interval returns the polling interval
+func (p *SWPCProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("15m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *SWPCProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewSWPCProvider creates a new SWPCProvider
 func NewSWPCProvider(config *Config) *SWPCProvider {
 	return &SWPCProvider{

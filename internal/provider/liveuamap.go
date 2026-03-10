@@ -20,6 +20,22 @@ type LiveUAMapProvider struct {
 	interval time.Duration
 }
 
+// Name returns the provider name
+func (p *LiveUAMapProvider) Name() string {
+    return "liveuamap"
+}
+
+// Interval returns the polling interval
+func (p *LiveUAMapProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("5m")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *LiveUAMapProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewLiveUAMapProvider creates a new LiveUAMap provider
 func NewLiveUAMapProvider() *LiveUAMapProvider {
 	return &LiveUAMapProvider{

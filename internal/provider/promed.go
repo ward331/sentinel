@@ -20,6 +20,22 @@ type ProMEDProvider struct {
 	config *Config
 }
 
+// Name returns the provider name
+func (p *ProMEDProvider) Name() string {
+    return "promed"
+}
+
+// Interval returns the polling interval
+func (p *ProMEDProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *ProMEDProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewProMEDProvider creates a new ProMEDProvider
 func NewProMEDProvider(config *Config) *ProMEDProvider {
 	return &ProMEDProvider{

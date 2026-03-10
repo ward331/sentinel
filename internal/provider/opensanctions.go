@@ -24,6 +24,22 @@ type OpenSanctionsProvider struct {
 	knownEntries map[string]bool
 }
 
+// Name returns the provider name
+func (p *OpenSanctionsProvider) Name() string {
+    return "opensanctions"
+}
+
+// Interval returns the polling interval
+func (p *OpenSanctionsProvider) Interval() time.Duration {
+    interval, _ := time.ParseDuration("1h")
+    return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *OpenSanctionsProvider) Enabled() bool {
+    return p.config != nil && p.config.Enabled
+}
+
 // NewOpenSanctionsProvider creates a new OpenSanctions provider
 func NewOpenSanctionsProvider(apiKey string) *OpenSanctionsProvider {
 	return &OpenSanctionsProvider{
