@@ -62,16 +62,37 @@ A production-ready Go backend for real-time disaster monitoring and alerting. In
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Download Pre-built Binary (Recommended)
+Download the latest release from [GitHub Releases](https://github.com/ward331/sentinel/releases):
+
+```bash
+# Linux (amd64)
+wget https://github.com/ward331/sentinel/releases/latest/download/sentinel-*-linux-amd64.tar.gz
+tar -xzf sentinel-*-linux-amd64.tar.gz
+chmod +x sentinel-linux-amd64
+./sentinel-linux-amd64 --help
+
+# macOS (Apple Silicon)
+wget https://github.com/ward331/sentinel/releases/latest/download/sentinel-*-darwin-arm64.tar.gz
+tar -xzf sentinel-*-darwin-arm64.tar.gz
+chmod +x sentinel-darwin-arm64
+./sentinel-darwin-arm64 --help
+
+# Windows
+# Download sentinel-*-windows-amd64.zip and extract
+# Run sentinel-windows-amd64.exe
+```
+
+### Option 2: Build from Source
+**Prerequisites:**
 - Go 1.21 or later
 - SQLite (modernc.org/sqlite driver - pure Go)
 
-### Installation
-
+**Installation:**
 ```bash
 # Clone and build
-git clone <repository>
-cd sentinel-backend
+git clone https://github.com/ward331/sentinel.git
+cd sentinel
 make build
 
 # Run with defaults
@@ -429,6 +450,40 @@ grep "ALERT" /var/log/sentinel.log
 - Maintain backward compatibility
 - Add appropriate logging
 
+## 🚀 Releases
+
+### Automated Release Process
+SENTINEL uses GitHub Actions for automated builds and releases:
+
+1. **CI Pipeline**: Runs on every push to `main` branch
+   - Runs tests and linting
+   - Verifies cross-platform compilation
+   - Ensures code quality
+
+2. **Release Pipeline**: Triggers on version tags (e.g., `v2.0.0`)
+   - Builds binaries for Linux, Windows, and macOS
+   - Creates SHA256 checksums for verification
+   - Packages binaries in appropriate formats
+   - Publishes to GitHub Releases automatically
+
+### Creating a New Release
+```bash
+# Tag the release
+git tag -a v2.0.1 -m "Release v2.0.1"
+
+# Push the tag (triggers release workflow)
+git push origin v2.0.1
+```
+
+### Release Assets
+Each release includes:
+- **Linux**: `sentinel-{version}-linux-amd64.tar.gz` (x86_64)
+- **Linux**: `sentinel-{version}-linux-arm64.tar.gz` (ARM64)
+- **Windows**: `sentinel-{version}-windows-amd64.zip` (x86_64)
+- **macOS**: `sentinel-{version}-darwin-amd64.tar.gz` (Intel)
+- **macOS**: `sentinel-{version}-darwin-arm64.tar.gz` (Apple Silicon)
+- **SHA256 checksums** for verification
+
 ## 📄 License
 
 [Specify license here]
@@ -438,6 +493,7 @@ grep "ALERT" /var/log/sentinel.log
 - USGS Earthquake Hazards Program for earthquake data
 - GDACS for global disaster alerts
 - OpenClaw community for development support
+- GitHub Actions for automated CI/CD
 
 ---
 
