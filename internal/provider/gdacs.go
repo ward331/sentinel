@@ -18,21 +18,34 @@ import (
 type GDACSProvider struct {
 	feedURL string
 	client  *http.Client
+	config  *Config
 }
 
 // NewGDACSProvider creates a new GDACS provider
-func NewGDACSProvider() *GDACSProvider {
+func NewGDACSProvider(config *Config) *GDACSProvider {
 	return &GDACSProvider{
 		feedURL: "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH",
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		config: config,
 	}
 }
 
 // Name returns the provider identifier
 func (p *GDACSProvider) Name() string {
 	return "gdacs"
+}
+
+// Interval returns the polling interval
+func (p *GDACSProvider) Interval() time.Duration {
+	interval, _ := time.ParseDuration("5m")
+	return interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *GDACSProvider) Enabled() bool {
+	return p.config != nil && p.config.Enabled
 }
 
 // Fetch retrieves events from the GDACS feed
