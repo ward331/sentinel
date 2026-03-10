@@ -36,9 +36,6 @@ func NewEnhancedPoller(
 	eventLog *infrastructure.NDJSONLog,
 	interval time.Duration,
 ) *EnhancedPoller {
-	// Create OpenSky provider (credentials can be empty for public API)
-	openskyProvider := provider.NewOpenSkyProvider("", "") // Public API doesn't require auth
-	
 	return &EnhancedPoller{
 		storage:       storage,
 		stream:        stream,
@@ -48,9 +45,9 @@ func NewEnhancedPoller(
 		eventLog:      eventLog,
 		interval:      interval,
 		providers: []model.Provider{
-			provider.NewUSGSProvider(),
-			provider.NewGDACSProvider(),
-			openskyProvider,
+			provider.NewUSGSProvider(nil),
+			provider.NewGDACSProvider(nil),
+			provider.NewOpenSkyEnhancedProvider(nil),
 		},
 	}
 }

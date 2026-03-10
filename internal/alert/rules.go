@@ -297,7 +297,7 @@ Category: %s
 Severity: %s
 Magnitude: %.2f
 Time: %s
-Location: %.4f, %.4f
+Location: %s
 Description: %s
 
 Full event details available in SENTINEL dashboard.

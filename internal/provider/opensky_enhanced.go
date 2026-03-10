@@ -239,13 +239,13 @@ func (p *OpenSkyEnhancedProvider) generateDescription(state *OpenSkyEnhancedStat
 	// Position and movement
 	desc.WriteString(fmt.Sprintf("Position: %.4f, %.4f\n", state.Latitude, state.Longitude))
 	if state.Altitude > 0 {
-		desc.WriteString(fmt.Sprintf("Altitude: %d m\n", state.Altitude))
+		desc.WriteString(fmt.Sprintf("Altitude: %.0f m\n", state.Altitude))
 	}
 	if state.Velocity > 0 {
 		desc.WriteString(fmt.Sprintf("Speed: %.1f m/s\n", state.Velocity))
 	}
 	if state.Heading >= 0 {
-		desc.WriteString(fmt.Sprintf("Heading: %d°\n", state.Heading))
+		desc.WriteString(fmt.Sprintf("Heading: %.0f°\n", state.Heading))
 	}
 	
 	// Military flag

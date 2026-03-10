@@ -32,8 +32,8 @@ func NewPoller(storage *storage.Storage, stream *api.StreamBroker, metrics *metr
 		metrics:     metrics,
 		interval:    interval,
 		providers: []model.Provider{
-			provider.NewUSGSProvider(),
-			provider.NewGDACSProvider(),
+			provider.NewUSGSProvider(nil),
+			provider.NewGDACSProvider(nil),
 			// Add more providers here as needed
 		},
 	}

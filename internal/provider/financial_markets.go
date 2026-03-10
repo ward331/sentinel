@@ -490,7 +490,7 @@ Historical Range:
 • 5-year average: ~$65-85
 
 Source: ICE Brent Crude Futures
-Data: Real-time pricing from Intercontinental Exchange`, timestamp.Format("January 2, 2006"))
+Data: Real-time pricing from Intercontinental Exchange`, price, timestamp.Format("January 2, 2006"))
 }
 
 // generateSampleCryptoEvents generates sample cryptocurrency events
