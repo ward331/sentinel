@@ -161,13 +161,17 @@ func (e *DefaultEngine) executeTagAction(ctx context.Context, event *model.Event
 	// Also add to badges if not already present
 	found := false
 	for _, badge := range event.Badges {
-		if badge == tag {
+		if badge.Label == tag {
 			found = true
 			break
 		}
 	}
 	if !found {
-		event.Badges = append(event.Badges, tag)
+		event.Badges = append(event.Badges, model.Badge{
+			Label:     tag,
+			Type:      model.BadgeTypeFilter,
+			Timestamp: time.Now(),
+		})
 	}
 
 	return nil

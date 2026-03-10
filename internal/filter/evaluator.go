@@ -60,32 +60,20 @@ func (e *DefaultEvaluator) getFieldValue(event *model.Event, field string) (inte
 		return event.SourceID, nil
 	case "magnitude":
 		return event.Magnitude, nil
-	case "confidence":
-		return event.Confidence, nil
 	case "latitude":
-		if event.Location != nil {
-			return event.Location.Latitude, nil
+		if coords, ok := event.Location.Coordinates.([]float64); ok && len(coords) >= 2 {
+			return coords[1], nil // GeoJSON: [lon, lat]
 		}
 		return nil, nil
 	case "longitude":
-		if event.Location != nil {
-			return event.Location.Longitude, nil
+		if coords, ok := event.Location.Coordinates.([]float64); ok && len(coords) >= 1 {
+			return coords[0], nil // GeoJSON: [lon, lat]
 		}
 		return nil, nil
-	case "country":
-		if event.Location != nil {
-			return event.Location.Country, nil
-		}
-		return nil, nil
-	case "region":
-		if event.Location != nil {
-			return event.Location.Region, nil
-		}
-		return nil, nil
-	case "created_at":
-		return event.CreatedAt, nil
-	case "updated_at":
-		return event.UpdatedAt, nil
+	case "occurred_at":
+		return event.OccurredAt, nil
+	case "ingested_at":
+		return event.IngestedAt, nil
 	case "metadata":
 		// For metadata fields, use dot notation: metadata.key
 		if strings.HasPrefix(field, "metadata.") {

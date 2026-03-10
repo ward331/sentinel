@@ -24,6 +24,7 @@ const (
 	BadgeTypeSource    BadgeType = "source"
 	BadgeTypePrecision BadgeType = "precision"
 	BadgeTypeFreshness BadgeType = "freshness"
+	BadgeTypeFilter    BadgeType = "filter"
 )
 
 // Severity represents event severity level
