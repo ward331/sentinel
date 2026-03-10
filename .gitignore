@@ -42,3 +42,4 @@ memory/
 skills/
 dist/
 *.out
+.openclaw/
