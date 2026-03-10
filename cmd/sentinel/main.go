@@ -112,6 +112,8 @@ func startServer(cfg *config.Config) error {
 
 	// Create API handler and router
 	apiHandler := api.NewHandler(store, metrics, healthRegistry)
+	apiHandler.SetPoller(pollerInstance)
+	apiHandler.SetConfig(cfg)
 	router := apiHandler.Router()
 
 	// Initialize OSINT storage and add routes

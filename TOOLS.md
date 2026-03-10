@@ -1,40 +1,18 @@
-# TOOLS.md - Local Notes
+# Tool Usage Rules
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+When Ed asks you to do something:
+1. USE your tools immediately — read, write, edit, exec
+2. Do NOT list tool signatures or ask "which function?"
+3. Do NOT show code in chat — write it to a file instead
+4. Do NOT describe what you would do — just DO it
 
-## What Goes Here
+## SSH Hosts
+- Gunther (this server): localhost
+- NAS / Ollama: 172.31.5.58
 
-Things like:
-
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
-
-## Examples
-
-```markdown
-### Cameras
-
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
-
-### SSH
-
-- home-server → 192.168.1.100, user: admin
-
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-Add whatever helps you do your job. This is your cheat sheet.
+## Key Paths
+- SENTINEL project: ~/.openclaw/workspace-sentinel-backend/
+- Mission Control: ~/.openclaw/workspace/mission-control-kanban/
+- Governor: ~/.openclaw/workspace/governor/
+- Telegram bot: ~/.openclaw/workspace-telegram/
+- Books/Library: ~/Gunther/Books/

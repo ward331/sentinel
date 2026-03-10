@@ -11,10 +11,12 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/openclaw/sentinel-backend/internal/alert"
+	"github.com/openclaw/sentinel-backend/internal/config"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/infrastructure"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
 	"github.com/openclaw/sentinel-backend/internal/model"
+	"github.com/openclaw/sentinel-backend/internal/poller"
 	"github.com/openclaw/sentinel-backend/internal/storage"
 )
 
@@ -27,6 +29,8 @@ type Handler struct {
 	health         *health.HealthRegistry
 	healthReporter *infrastructure.HealthReporter
 	eventLog       *infrastructure.NDJSONLog
+	poller         *poller.Poller
+	config         *config.Config
 	startTime      time.Time
 }
 
@@ -65,6 +69,62 @@ func NewHandlerWithInfrastructure(
 // Stream returns the stream broker for broadcasting events
 func (h *Handler) Stream() *StreamBroker {
 	return h.stream
+}
+
+// SetPoller sets the poller instance on the handler
+func (h *Handler) SetPoller(p *poller.Poller) {
+	h.poller = p
+}
+
+// SetConfig sets the config instance on the handler
+func (h *Handler) SetConfig(cfg *config.Config) {
+	h.config = cfg
+}
+
+// ListProviders handles GET /api/providers
+func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+
+	if h.poller == nil {
+		http.Error(w, `{"error": "Poller not available"}`, http.StatusServiceUnavailable)
+		if h.metrics != nil {
+			h.metrics.RecordAPIError("/api/providers")
+		}
+		return
+	}
+
+	names := h.poller.GetProviderNames()
+
+	type providerInfo struct {
+		Name            string `json:"name"`
+		IntervalSeconds int    `json:"interval_seconds"`
+		Enabled         bool   `json:"enabled"`
+	}
+
+	providers := make([]providerInfo, 0, len(names))
+	for _, name := range names {
+		prov, ok := h.poller.GetProvider(name)
+		if !ok {
+			continue
+		}
+		providers = append(providers, providerInfo{
+			Name:            name,
+			IntervalSeconds: int(prov.Interval().Seconds()),
+			Enabled:         prov.Enabled(),
+		})
+	}
+
+	response := map[string]interface{}{
+		"providers": providers,
+		"total":     len(providers),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+	if h.metrics != nil {
+		h.metrics.RecordAPIRequest("/api/providers", time.Since(startTime))
+	}
 }
 
 // ListEvents handles GET /api/events
@@ -610,19 +670,31 @@ func (h *Handler) GetUnhealthyProviders(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) Router() *mux.Router {
 	r := mux.NewRouter()
 	
-	// Event routes
+	// Event log routes (if available) — MUST be before {id}
+	if h.eventLog != nil {
+		r.HandleFunc("/api/events/log/info", h.GetEventLogInfo).Methods("GET")
+		r.HandleFunc("/api/events/log/rotate", h.RotateEventLog).Methods("POST")
+	}
+
+	// Event routes — stream MUST be before {id} to avoid matching "stream" as an id
+	r.HandleFunc("/api/events/stream", h.EventStream).Methods("GET")
 	r.HandleFunc("/api/events", h.ListEvents).Methods("GET")
 	r.HandleFunc("/api/events", h.CreateEvent).Methods("POST")
 	r.HandleFunc("/api/events/{id}", h.GetEvent).Methods("GET")
-	// Note: UpdateEvent and DeleteEvent methods not implemented yet
-	
-	// Stream routes
-	r.HandleFunc("/api/events/stream", h.EventStream).Methods("GET")
 	
 	// Health routes
 	r.HandleFunc("/api/health", h.HealthCheck).Methods("GET")
 	r.HandleFunc("/api/providers/healthy", h.GetHealthyProviders).Methods("GET")
 	r.HandleFunc("/api/providers/unhealthy", h.GetUnhealthyProviders).Methods("GET")
+
+	// Provider listing route
+	r.HandleFunc("/api/providers", h.ListProviders).Methods("GET")
+
+	// Config/settings routes
+	if h.config != nil {
+		settingsHandler := NewSettingsHandler(h.config)
+		r.HandleFunc("/api/config", settingsHandler.ServeHTTP).Methods("GET", "POST")
+	}
 	
 	// Alert routes
 	r.HandleFunc("/api/alerts/rules", h.ListAlertRules).Methods("GET")
@@ -635,12 +707,6 @@ func (h *Handler) Router() *mux.Router {
 	// Provider health routes
 	r.HandleFunc("/api/providers/health", h.GetProviderHealth).Methods("GET")
 	r.HandleFunc("/api/providers/stats", h.GetProviderStats).Methods("GET")
-	
-	// Event log routes (if available)
-	if h.eventLog != nil {
-		r.HandleFunc("/api/events/log/info", h.GetEventLogInfo).Methods("GET")
-		r.HandleFunc("/api/events/log/rotate", h.RotateEventLog).Methods("POST")
-	}
 	
 	return r
 }
