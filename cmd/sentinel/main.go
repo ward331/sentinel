@@ -121,7 +121,7 @@ func startServer(cfg *config.Config) error {
 	osintHandler.RegisterRoutes(osintRouter)
 	log.Printf("OSINT resources API initialized")
 
-	// Note: Filter engine initialization commented out for now
+	// Note: Filter engine initialization commented out due to compilation issues
 	// Advanced filtering requires geofence engine and evaluator setup
 	// filterEngine := filter.NewDefaultEngine(store, evaluator, geofenceEngine)
 	// filterHandler := api.NewFilterHandler(filterEngine)
