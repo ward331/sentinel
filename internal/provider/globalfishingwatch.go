@@ -30,10 +30,6 @@ func NewGlobalFishingWatchProvider(apiKey string) *GlobalFishingWatchProvider {
 	}
 }
 
-// Name returns the provider name
-func (p *GlobalFishingWatchProvider) Name() string {
-	return p.name
-}
 
 // Fetch retrieves vessel events from Global Fishing Watch
 func (p *GlobalFishingWatchProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

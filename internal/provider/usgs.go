@@ -15,39 +15,39 @@ import (
 
 // USGSProvider implements the Provider interface for USGS earthquake data
 type USGSProvider struct {
-	feedURL string
-	client  *http.Client
-}
-
-// Name returns the provider name
-func (p *USGSProvider) Name() string {
-    return "usgs"
-}
-
-// Interval returns the polling interval
-func (p *USGSProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1m")
-    return interval
-}
-
-// Enabled returns whether the provider is enabled
-func (p *USGSProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
+	name     string
+	feedURL  string
+	interval time.Duration
+	config   *Config
+	client   *http.Client
 }
 
 // NewUSGSProvider creates a new USGS provider
-func NewUSGSProvider() *USGSProvider {
+func NewUSGSProvider(config *Config) *USGSProvider {
 	return &USGSProvider{
+		name:     "usgs",
 		feedURL: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
+		interval: 60 * time.Second, // 1 minute
+		config:   config,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-// Name returns the provider identifier
+// Name returns the provider name
 func (p *USGSProvider) Name() string {
-	return "usgs"
+	return p.name
+}
+
+// Interval returns the polling interval
+func (p *USGSProvider) Interval() time.Duration {
+	return p.interval
+}
+
+// Enabled returns whether the provider is enabled
+func (p *USGSProvider) Enabled() bool {
+	return p.config != nil && p.config.Enabled
 }
 
 // Fetch retrieves events from the USGS feed

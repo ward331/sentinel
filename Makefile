@@ -9,7 +9,7 @@ HTTP_PORT = 8100
 HTTP_HOST = localhost
 
 # Go commands
-GO = go
+GO = /usr/local/go/bin/go
 GO_BUILD = $(GO) build
 GO_TEST = $(GO) test
 GO_MOD = $(GO) mod

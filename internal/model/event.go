@@ -43,6 +43,9 @@ type Location struct {
 	BBox        []float64   `json:"bbox,omitempty"`
 }
 
+// GeoJSON is an alias for Location for backward compatibility
+type GeoJSON = Location
+
 // Point creates a Point location
 func Point(lon, lat float64) Location {
 	return Location{

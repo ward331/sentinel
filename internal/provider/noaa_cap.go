@@ -19,21 +19,8 @@ type NOAACAPProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *NOAACAPProvider) Name() string {
-	return "noaa_cap"
-}
 
-// Interval returns the polling interval
-func (p *NOAACAPProvider) Interval() time.Duration {
-	interval, _ := time.ParseDuration("5m")
-	return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *NOAACAPProvider) Enabled() bool {
-	return p.config != nil && p.config.Enabled
-}
 
 // NewNOAACAPProvider creates a new NOAACAPProvider
 func NewNOAACAPProvider(config *Config) *NOAACAPProvider {
@@ -298,7 +285,7 @@ func (p *NOAACAPProvider) calculateMagnitude(entry CAPEntry) float64 {
 }
 
 // determineSeverity determines event severity from CAP alert
-func (p *NOAACAPProvider) determineSeverity(entry CAPEntry) string {
+func (p *NOAACAPProvider) determineSeverity(entry CAPEntry) model.Severity {
 	switch strings.ToLower(entry.CapAlert.Severity) {
 	case "extreme":
 		return model.SeverityCritical
@@ -373,7 +360,7 @@ func (p *NOAACAPProvider) generateBadges(entry CAPEntry) []model.Badge {
 	// Add severity badge
 	severity := p.determineSeverity(entry)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})

@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,21 +18,8 @@ type CelesTrakProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *CelesTrakProvider) Name() string {
-    return "celestrak"
-}
 
-// Interval returns the polling interval
-func (p *CelesTrakProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("15m")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *CelesTrakProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewCelesTrakProvider creates a new CelesTrakProvider
 func NewCelesTrakProvider(config *Config) *CelesTrakProvider {
@@ -465,24 +451,4 @@ func (p *CelesTrakProvider) generateBadges(sat *Satellite) []model.Badge {
 }
 
 // RSS structures for parsing (used by other providers)
-type RSSFeed struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel Channel  `xml:"channel"`
-}
 
-type Channel struct {
-	Title       string    `xml:"title"`
-	Link        string    `xml:"link"`
-	Description string    `xml:"description"`
-	Items       []RSSItem `xml:"item"`
-}
-
-type RSSItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-	GUID        string `xml:"guid"`
-	Author      string `xml:"author"`
-	Category    string `xml:"category"`
-}

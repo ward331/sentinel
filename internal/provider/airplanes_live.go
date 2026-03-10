@@ -17,21 +17,8 @@ type AirplanesLiveProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *AirplanesLiveProvider) Name() string {
-    return "airplaneslive"
-}
 
-// Interval returns the polling interval
-func (p *AirplanesLiveProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("5s")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *AirplanesLiveProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewAirplanesLiveProvider creates a new AirplanesLiveProvider
 func NewAirplanesLiveProvider(config *Config) *AirplanesLiveProvider {
@@ -80,11 +67,16 @@ func (p *AirplanesLiveProvider) Fetch(ctx context.Context) ([]*model.Event, erro
 // getBoundingBox returns the bounding box for aircraft queries
 func (p *AirplanesLiveProvider) getBoundingBox() BoundingBox {
 	// If location is configured in config, use it
-	if p.config.Location != nil && p.config.Location.Lat != 0 && p.config.Location.Lon != 0 {
-		return BoundingBox{
-			CenterLat: p.config.Location.Lat,
-			CenterLon: p.config.Location.Lon,
-			RadiusKm:  500, // 500km radius around configured location
+	// Location is stored as string "lat,lon" in config
+	if p.config != nil && p.config.Location != "" {
+		// Parse location string
+		var lat, lon float64
+		if _, err := fmt.Sscanf(p.config.Location, "%f,%f", &lat, &lon); err == nil && lat != 0 && lon != 0 {
+			return BoundingBox{
+				CenterLat: lat,
+				CenterLon: lon,
+				RadiusKm:  500, // 500km radius around configured location
+			}
 		}
 	}
 	

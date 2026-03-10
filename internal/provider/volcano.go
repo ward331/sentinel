@@ -307,7 +307,7 @@ func (p *VolcanoProvider) extractMagnitude(item RSSItem) float64 {
 }
 
 // determineSeverity determines the event severity
-func (p *VolcanoProvider) determineSeverity(item RSSItem) string {
+func (p *VolcanoProvider) determineSeverity(item RSSItem) model.Severity {
 	text := strings.ToLower(item.Title + " " + item.Description)
 	
 	if strings.Contains(text, "explosive") || strings.Contains(text, "major eruption") {
@@ -466,7 +466,7 @@ func (p *VolcanoProvider) generateBadges(item RSSItem) []model.Badge {
 	// Add severity badge
 	severity := p.determineSeverity(item)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})

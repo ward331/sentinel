@@ -24,21 +24,8 @@ type OpenSanctionsProvider struct {
 	knownEntries map[string]bool
 }
 
-// Name returns the provider name
-func (p *OpenSanctionsProvider) Name() string {
-    return "opensanctions"
-}
 
-// Interval returns the polling interval
-func (p *OpenSanctionsProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1h")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *OpenSanctionsProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewOpenSanctionsProvider creates a new OpenSanctions provider
 func NewOpenSanctionsProvider(apiKey string) *OpenSanctionsProvider {
@@ -52,10 +39,6 @@ func NewOpenSanctionsProvider(apiKey string) *OpenSanctionsProvider {
 	}
 }
 
-// Name returns the provider name
-func (p *OpenSanctionsProvider) Name() string {
-	return p.name
-}
 
 // Fetch retrieves sanctions data from OpenSanctions
 func (p *OpenSanctionsProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

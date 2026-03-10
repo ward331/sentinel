@@ -18,37 +18,21 @@ type LiveUAMapProvider struct {
 	name     string
 	feedURL  string
 	interval time.Duration
-}
-
-// Name returns the provider name
-func (p *LiveUAMapProvider) Name() string {
-    return "liveuamap"
-}
-
-// Interval returns the polling interval
-func (p *LiveUAMapProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("5m")
-    return interval
-}
-
-// Enabled returns whether the provider is enabled
-func (p *LiveUAMapProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
+	config   *Config
 }
 
 // NewLiveUAMapProvider creates a new LiveUAMap provider
-func NewLiveUAMapProvider() *LiveUAMapProvider {
+func NewLiveUAMapProvider(config *Config) *LiveUAMapProvider {
 	return &LiveUAMapProvider{
 		name:     "liveuamap",
 		feedURL:  "https://liveuamap.com/rss",
 		interval: 900 * time.Second, // 15 minutes
+		config:   config,
 	}
 }
 
-// Name returns the provider name
-func (p *LiveUAMapProvider) Name() string {
-	return p.name
-}
+
+
 
 // Fetch retrieves conflict events from LiveUAMap RSS
 func (p *LiveUAMapProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
@@ -82,7 +66,7 @@ func (p *LiveUAMapProvider) fetchRSS(ctx context.Context) ([]*model.Event, error
 		return nil, fmt.Errorf("RSS returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var rss RSSFeed
+	var rss LiveUAMapRSSFeed
 	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
 		return nil, fmt.Errorf("failed to decode RSS: %w", err)
 	}
@@ -91,7 +75,7 @@ func (p *LiveUAMapProvider) fetchRSS(ctx context.Context) ([]*model.Event, error
 }
 
 // convertToEvents converts RSS items to SENTINEL events
-func (p *LiveUAMapProvider) convertToEvents(rss RSSFeed) []*model.Event {
+func (p *LiveUAMapProvider) convertToEvents(rss LiveUAMapRSSFeed) []*model.Event {
 	events := make([]*model.Event, 0, len(rss.Channel.Items))
 
 	for _, item := range rss.Channel.Items {
@@ -127,7 +111,7 @@ func (p *LiveUAMapProvider) convertToEvents(rss RSSFeed) []*model.Event {
 }
 
 // extractCoordinates extracts coordinates from RSS item
-func (p *LiveUAMapProvider) extractCoordinates(item RSSItem) []float64 {
+func (p *LiveUAMapProvider) extractCoordinates(item LiveUAMapRSSItem) []float64 {
 	// Try to extract from description first
 	coordPattern := regexp.MustCompile(`(\-?\d+\.\d+)[,\s]+(\-?\d+\.\d+)`)
 	
@@ -197,7 +181,7 @@ func (p *LiveUAMapProvider) cleanTitle(title string) string {
 }
 
 // generateDescription generates event description
-func (p *LiveUAMapProvider) generateDescription(item RSSItem) string {
+func (p *LiveUAMapProvider) generateDescription(item LiveUAMapRSSItem) string {
 	var desc strings.Builder
 	
 	desc.WriteString("Conflict Event Report\n")
@@ -243,7 +227,7 @@ func (p *LiveUAMapProvider) cleanDescription(desc string) string {
 }
 
 // calculateMagnitude calculates event magnitude
-func (p *LiveUAMapProvider) calculateMagnitude(item RSSItem) float64 {
+func (p *LiveUAMapProvider) calculateMagnitude(item LiveUAMapRSSItem) float64 {
 	magnitude := 2.5 // Base for conflict events
 	
 	// Adjust based on keywords
@@ -284,7 +268,7 @@ func (p *LiveUAMapProvider) calculateMagnitude(item RSSItem) float64 {
 }
 
 // determineSeverity determines event severity
-func (p *LiveUAMapProvider) determineSeverity(item RSSItem) model.Severity {
+func (p *LiveUAMapProvider) determineSeverity(item LiveUAMapRSSItem) model.Severity {
 	text := strings.ToLower(item.Title + " " + item.Description)
 	
 	// Critical severity indicators
@@ -330,7 +314,7 @@ func (p *LiveUAMapProvider) determineSeverity(item RSSItem) model.Severity {
 }
 
 // generateMetadata generates event metadata
-func (p *LiveUAMapProvider) generateMetadata(item RSSItem) map[string]string {
+func (p *LiveUAMapProvider) generateMetadata(item LiveUAMapRSSItem) map[string]string {
 	metadata := map[string]string{
 		"guid":           fmt.Sprintf("%d", item.GUID),
 		"link":           item.Link,
@@ -362,7 +346,7 @@ func (p *LiveUAMapProvider) generateMetadata(item RSSItem) map[string]string {
 }
 
 // extractCountry extracts country from item
-func (p *LiveUAMapProvider) extractCountry(item RSSItem) string {
+func (p *LiveUAMapProvider) extractCountry(item LiveUAMapRSSItem) string {
 	text := strings.ToLower(item.Title + " " + item.Description)
 	
 	countryPatterns := map[string][]string{
@@ -390,7 +374,7 @@ func (p *LiveUAMapProvider) extractCountry(item RSSItem) string {
 }
 
 // generateBadges generates event badges
-func (p *LiveUAMapProvider) generateBadges(item RSSItem) []model.Badge {
+func (p *LiveUAMapProvider) generateBadges(item LiveUAMapRSSItem) []model.Badge {
 	badges := []model.Badge{
 		{
 			Type:      model.BadgeTypeSource,
@@ -455,24 +439,25 @@ func (p *LiveUAMapProvider) generateBadges(item RSSItem) []model.Badge {
 }
 
 // RSSFeed represents the LiveUAMap RSS feed structure
-type RSSFeed struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel Channel  `xml:"channel"`
+// LiveUAMapRSSFeed represents the LiveUAMap RSS feed structure
+type LiveUAMapRSSFeed struct {
+	XMLName xml.Name          `xml:"rss"`
+	Channel LiveUAMapChannel  `xml:"channel"`
 }
 
-// Channel represents an RSS channel
-type Channel struct {
-	Title       string    `xml:"title"`
-	Link        string    `xml:"link"`
-	Description string    `xml:"description"`
-	Language    string    `xml:"language"`
-	PubDate     string    `xml:"pubDate"`
-	LastBuildDate string  `xml:"lastBuildDate"`
-	Items       []RSSItem `xml:"item"`
+// LiveUAMapChannel represents an RSS channel for LiveUAMap
+type LiveUAMapChannel struct {
+	Title       string            `xml:"title"`
+	Link        string            `xml:"link"`
+	Description string            `xml:"description"`
+	Language    string            `xml:"language"`
+	PubDate     string            `xml:"pubDate"`
+	LastBuildDate string          `xml:"lastBuildDate"`
+	Items       []LiveUAMapRSSItem `xml:"item"`
 }
 
-// RSSItem represents an RSS item
-type RSSItem struct {
+// LiveUAMapRSSItem represents an RSS item for LiveUAMap
+type LiveUAMapRSSItem struct {
 	Title       string   `xml:"title"`
 	Link        string   `xml:"link"`
 	Description string   `xml:"description"`

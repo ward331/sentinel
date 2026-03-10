@@ -20,21 +20,8 @@ type SWPCProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *SWPCProvider) Name() string {
-    return "swpc"
-}
 
-// Interval returns the polling interval
-func (p *SWPCProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("15m")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *SWPCProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewSWPCProvider creates a new SWPCProvider
 func NewSWPCProvider(config *Config) *SWPCProvider {
@@ -350,7 +337,7 @@ func (p *SWPCProvider) calculateSolarWindMagnitude(density, speed float64) float
 	return magnitude
 }
 
-func (p *SWPCProvider) determineSolarWindSeverity(speed, density float64) string {
+func (p *SWPCProvider) determineSolarWindSeverity(speed, density float64) model.Severity {
 	if speed > 800 || density > 20 {
 		return model.SeverityHigh
 	}
@@ -388,7 +375,7 @@ Source: NOAA SWPC Planetary K-Index`,
 		kp, level, timestamp)
 }
 
-func (p *SWPCProvider) determineKpSeverity(kp float64) string {
+func (p *SWPCProvider) determineKpSeverity(kp float64) model.Severity {
 	if kp >= 7 {
 		return model.SeverityHigh
 	}
@@ -439,7 +426,7 @@ func (p *SWPCProvider) calculateAlertMagnitude(alert SWPCAlert) float64 {
 	return magnitude
 }
 
-func (p *SWPCProvider) determineAlertSeverity(alert SWPCAlert) string {
+func (p *SWPCProvider) determineAlertSeverity(alert SWPCAlert) model.Severity {
 	switch alert.Severity {
 	case "Extreme", "Severe":
 		return model.SeverityCritical
@@ -510,7 +497,7 @@ func (p *SWPCProvider) calculateFlareMagnitude(class string) float64 {
 	return magnitude
 }
 
-func (p *SWPCProvider) determineFlareSeverity(class string) string {
+func (p *SWPCProvider) determineFlareSeverity(class string) model.Severity {
 	if len(class) < 1 {
 		return model.SeverityLow
 	}

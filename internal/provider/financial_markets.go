@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,21 +18,8 @@ type FinancialMarketsProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *FinancialMarketsProvider) Name() string {
-    return "financialmarkets"
-}
 
-// Interval returns the polling interval
-func (p *FinancialMarketsProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1h")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *FinancialMarketsProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewFinancialMarketsProvider creates a new FinancialMarketsProvider
 func NewFinancialMarketsProvider(config *Config) *FinancialMarketsProvider {
@@ -272,7 +258,7 @@ func (p *FinancialMarketsProvider) calculateVIXMagnitude(vixValue float64) float
 }
 
 // determineVIXSeverity determines severity based on VIX value
-func (p *FinancialMarketsProvider) determineVIXSeverity(vixValue float64) string {
+func (p *FinancialMarketsProvider) determineVIXSeverity(vixValue float64) model.Severity {
 	if vixValue >= 40 {
 		return model.SeverityCritical
 	} else if vixValue >= 30 {
@@ -391,7 +377,7 @@ func (p *FinancialMarketsProvider) generateVIXBadges(vixValue float64, timestamp
 	// Add severity badge
 	severity := p.determineVIXSeverity(vixValue)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})

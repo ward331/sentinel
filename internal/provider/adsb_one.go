@@ -17,21 +17,8 @@ type ADSBOneProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *ADSBOneProvider) Name() string {
-    return "adsbone"
-}
 
-// Interval returns the polling interval
-func (p *ADSBOneProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("5s")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *ADSBOneProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewADSBOneProvider creates a new ADSBOneProvider
 func NewADSBOneProvider(config *Config) *ADSBOneProvider {

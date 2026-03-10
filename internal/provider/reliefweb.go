@@ -14,25 +14,66 @@ import (
 
 // ReliefWebProvider fetches disaster reports from ReliefWeb API
 type ReliefWebProvider struct {
-	client *http.Client
-	config *Config
+	name     string
+	interval time.Duration
+	client   *http.Client
+	config   *Config
 }
 
-// Name returns the provider name
-func (p *ReliefWebProvider) Name() string {
-    return "reliefweb"
+// ReliefWebResponse represents the ReliefWeb API response
+type ReliefWebResponse struct {
+	TotalCount int                `json:"totalCount"`
+	Data       []ReliefWebReport  `json:"data"`
+	Links      map[string]string  `json:"links"`
 }
 
-// Interval returns the polling interval
-func (p *ReliefWebProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1h")
-    return interval
+// ReliefWebReport represents a single report from ReliefWeb
+type ReliefWebReport struct {
+	ID         string                 `json:"id"`
+	Fields     ReliefWebReportFields  `json:"fields"`
+	Href       string                 `json:"href"`
 }
 
-// Enabled returns whether the provider is enabled
-func (p *ReliefWebProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
+// ReliefWebReportFields contains the actual report data
+type ReliefWebReportFields struct {
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	Date        ReliefWebDate `json:"date"`
+	Country     []ReliefWebCountry `json:"country"`
+	Disaster    []ReliefWebDisaster `json:"disaster"`
+	Source      []ReliefWebSource `json:"source"`
+	URL         string    `json:"url"`
+	Status      string    `json:"status"`
+	Primary     bool      `json:"primary_country"`
 }
+
+// ReliefWebDate represents date information
+type ReliefWebDate struct {
+	Created  time.Time `json:"created"`
+	Original string    `json:"original"`
+}
+
+// ReliefWebCountry represents country information
+type ReliefWebCountry struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	ISO3  string `json:"iso3"`
+}
+
+// ReliefWebDisaster represents disaster type
+type ReliefWebDisaster struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ReliefWebSource represents source information
+type ReliefWebSource struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+
+
 
 // NewReliefWebProvider creates a new ReliefWebProvider
 func NewReliefWebProvider(config *Config) *ReliefWebProvider {
@@ -91,7 +132,7 @@ func (p *ReliefWebProvider) convertToEvents(response ReliefWebResponse) ([]*mode
 			Description: p.generateDescription(report),
 			Source:      "reliefweb",
 			SourceID:    report.ID,
-			OccurredAt:  p.parseDate(report.Fields.Date.Created),
+			OccurredAt:  report.Fields.Date.Created,
 			Location:    p.extractLocation(report),
 			Precision:   model.PrecisionApproximate,
 			Magnitude:   p.calculateMagnitude(report),
@@ -109,30 +150,27 @@ func (p *ReliefWebProvider) convertToEvents(response ReliefWebResponse) ([]*mode
 
 // isDisasterReport checks if a report is about a disaster
 func (p *ReliefWebProvider) isDisasterReport(report ReliefWebReport) bool {
-	// Check disaster-related themes
-	disasterThemes := []string{
-		"Natural Disaster", "Earthquake", "Flood", "Storm", "Cyclone",
-		"Typhoon", "Hurricane", "Drought", "Wildfire", "Volcano",
-		"Tsunami", "Landslide", "Avalanche", "Extreme Temperature",
-		"Complex Emergency", "Conflict", "Epidemic", "Pandemic",
+	// Check if it has disaster information
+	if len(report.Fields.Disaster) > 0 {
+		return true
 	}
 	
-	for _, theme := range report.Fields.Theme {
-		for _, disasterTheme := range disasterThemes {
-			if strings.Contains(theme.Name, disasterTheme) {
-				return true
-			}
-		}
+	// Check status for emergency indicators
+	status := strings.ToLower(report.Fields.Status)
+	if strings.Contains(status, "emergency") || strings.Contains(status, "alert") || strings.Contains(status, "crisis") {
+		return true
 	}
 	
-	// Check disaster-related primary types
-	disasterTypes := []string{
-		"Situation Report", "Flash Update", "Humanitarian Bulletin",
-		"Disaster Management", "Emergency Response",
+	// Check title for disaster keywords
+	title := strings.ToLower(report.Fields.Title)
+	disasterKeywords := []string{
+		"earthquake", "flood", "storm", "cyclone", "typhoon", "hurricane",
+		"drought", "wildfire", "volcano", "tsunami", "landslide", "avalanche",
+		"disaster", "emergency", "crisis", "conflict", "epidemic", "pandemic",
 	}
 	
-	for _, disasterType := range disasterTypes {
-		if strings.Contains(report.Fields.PrimaryType, disasterType) {
+	for _, keyword := range disasterKeywords {
+		if strings.Contains(title, keyword) {
 			return true
 		}
 	}
@@ -163,8 +201,23 @@ func (p *ReliefWebProvider) generateDescription(report ReliefWebReport) string {
 	
 	// Add body if available
 	if report.Fields.Body != "" {
-		// Clean and truncate body
-		body := p.cleanHTML(report.Fields.Body)
+		// Clean and truncate body (simple HTML cleaning)
+		body := report.Fields.Body
+		// Remove basic HTML tags
+		body = strings.ReplaceAll(body, "<br>", "\n")
+		body = strings.ReplaceAll(body, "<br/>", "\n")
+		body = strings.ReplaceAll(body, "<p>", "\n")
+		body = strings.ReplaceAll(body, "</p>", "\n")
+		// Remove other HTML tags (simple regex would be better but this works for basic cases)
+		for strings.Contains(body, "<") && strings.Contains(body, ">") {
+			start := strings.Index(body, "<")
+			end := strings.Index(body, ">")
+			if end > start {
+				body = body[:start] + body[end+1:]
+			} else {
+				break
+			}
+		}
 		if len(body) > 500 {
 			body = body[:500] + "..."
 		}
@@ -190,38 +243,15 @@ func (p *ReliefWebProvider) generateDescription(report ReliefWebReport) string {
 	}
 	
 	// Add date
-	builder.WriteString(fmt.Sprintf("Published: %s", p.formatDate(report.Fields.Date.Created)))
+	builder.WriteString(fmt.Sprintf("Published: %s", report.Fields.Date.Created.Format("2006-01-02 15:04:05 MST")))
 	
 	return builder.String()
 }
 
 // extractLocation extracts location from disaster report
 func (p *ReliefWebProvider) extractLocation(report ReliefWebReport) model.GeoJSON {
-	// Try to get coordinates from country centroids
-	if len(report.Fields.Country) > 0 {
-		country := report.Fields.Country[0]
-		if country.Location != nil && len(country.Location.Coordinates) >= 2 {
-			return model.GeoJSON{
-				Type:        "Point",
-				Coordinates: []float64{country.Location.Coordinates[0], country.Location.Coordinates[1]},
-			}
-		}
-	}
-	
-	// Try to get coordinates from primary country
-	if report.Fields.PrimaryCountry != nil && report.Fields.PrimaryCountry.Location != nil {
-		if len(report.Fields.PrimaryCountry.Location.Coordinates) >= 2 {
-			return model.GeoJSON{
-				Type:        "Point",
-				Coordinates: []float64{
-					report.Fields.PrimaryCountry.Location.Coordinates[0],
-					report.Fields.PrimaryCountry.Location.Coordinates[1],
-				},
-			}
-		}
-	}
-	
-	// Default to world center
+	// For now, return world center since we don't have coordinates
+	// In a real implementation, we would look up coordinates by country ISO3 code
 	return model.GeoJSON{
 		Type:        "Point",
 		Coordinates: []float64{0.0, 0.0},
@@ -305,7 +335,7 @@ func (p *ReliefWebProvider) determineCategory(report ReliefWebReport) string {
 }
 
 // determineSeverity determines the event severity
-func (p *ReliefWebProvider) determineSeverity(report ReliefWebReport) string {
+func (p *ReliefWebProvider) determineSeverity(report ReliefWebReport) model.Severity {
 	// Check for emergency level in title/body
 	title := strings.ToLower(report.Fields.Title)
 	body := strings.ToLower(report.Fields.Body)
@@ -331,42 +361,68 @@ func (p *ReliefWebProvider) determineSeverity(report ReliefWebReport) string {
 
 // extractDisasterType extracts the main disaster type from the report
 func (p *ReliefWebProvider) extractDisasterType(report ReliefWebReport) string {
-	// Check themes first
-	for _, theme := range report.Fields.Theme {
-		if strings.Contains(theme.Name, "Natural Disaster") {
-			// Look for specific disaster types in title
-			title := strings.ToLower(report.Fields.Title)
-			disasterTypes := []string{
-				"earthquake", "flood", "storm", "cyclone", "typhoon",
-				"hurricane", "drought", "wildfire", "volcano", "tsunami",
-				"landslide", "avalanche", "conflict", "epidemic", "pandemic",
+	// Check disaster field first
+	if len(report.Fields.Disaster) > 0 {
+		for _, disaster := range report.Fields.Disaster {
+			name := strings.ToLower(disaster.Name)
+			if strings.Contains(name, "earthquake") {
+				return "Earthquake"
 			}
-			
-			for _, disasterType := range disasterTypes {
-				if strings.Contains(title, disasterType) {
-					return strings.Title(disasterType)
-				}
+			if strings.Contains(name, "flood") {
+				return "Flood"
 			}
-			
-			return "Natural Disaster"
+			if strings.Contains(name, "storm") || strings.Contains(name, "cyclone") || strings.Contains(name, "typhoon") || strings.Contains(name, "hurricane") {
+				return "Storm"
+			}
+			if strings.Contains(name, "drought") {
+				return "Drought"
+			}
+			if strings.Contains(name, "wildfire") {
+				return "Wildfire"
+			}
+			if strings.Contains(name, "volcano") {
+				return "Volcano"
+			}
+			if strings.Contains(name, "tsunami") {
+				return "Tsunami"
+			}
+			if strings.Contains(name, "landslide") || strings.Contains(name, "avalanche") {
+				return "Landslide"
+			}
+			if strings.Contains(name, "conflict") {
+				return "Conflict"
+			}
+			if strings.Contains(name, "epidemic") || strings.Contains(name, "pandemic") {
+				return "Epidemic"
+			}
 		}
-		if strings.Contains(theme.Name, "Complex Emergency") {
-			return "Complex Emergency"
-		}
-		if strings.Contains(theme.Name, "Conflict") {
-			return "Conflict"
-		}
-		if strings.Contains(theme.Name, "Epidemic") {
-			return "Epidemic"
+		return report.Fields.Disaster[0].Name
+	}
+	
+	// Check title for disaster keywords
+	title := strings.ToLower(report.Fields.Title)
+	disasterTypes := []string{
+		"earthquake", "flood", "storm", "cyclone", "typhoon",
+		"hurricane", "drought", "wildfire", "volcano", "tsunami",
+		"landslide", "avalanche", "conflict", "epidemic", "pandemic",
+	}
+	
+	for _, disasterType := range disasterTypes {
+		if strings.Contains(title, disasterType) {
+			return strings.Title(disasterType)
 		}
 	}
 	
-	// Check primary type
-	if strings.Contains(report.Fields.PrimaryType, "Situation Report") {
-		return "Situation Report"
+	// Check status
+	status := strings.ToLower(report.Fields.Status)
+	if strings.Contains(status, "emergency") {
+		return "Emergency"
 	}
-	if strings.Contains(report.Fields.PrimaryType, "Flash Update") {
-		return "Flash Update"
+	if strings.Contains(status, "alert") {
+		return "Alert"
+	}
+	if strings.Contains(status, "crisis") {
+		return "Crisis"
 	}
 	
 	return "Humanitarian Report"
@@ -409,14 +465,28 @@ func (p *ReliefWebProvider) generateMetadata(report ReliefWebReport) map[string]
 		"title":        report.Fields.Title,
 		"source":       "ReliefWeb",
 		"url":          report.Fields.URL,
-		"date_created": report.Fields.Date.Created,
-		"date_changed": report.Fields.Date.Changed,
-		"primary_type": report.Fields.PrimaryType,
+		"date_created": report.Fields.Date.Created.Format(time.RFC3339),
+		"status":       report.Fields.Status,
 	}
 	
 	// Add body (truncated)
 	if report.Fields.Body != "" {
-		body := p.cleanHTML(report.Fields.Body)
+		body := report.Fields.Body
+		// Simple HTML cleaning
+		body = strings.ReplaceAll(body, "<br>", "\n")
+		body = strings.ReplaceAll(body, "<br/>", "\n")
+		body = strings.ReplaceAll(body, "<p>", "\n")
+		body = strings.ReplaceAll(body, "</p>", "\n")
+		// Remove other HTML tags
+		for strings.Contains(body, "<") && strings.Contains(body, ">") {
+			start := strings.Index(body, "<")
+			end := strings.Index(body, ">")
+			if end > start {
+				body = body[:start] + body[end+1:]
+			} else {
+				break
+			}
+		}
 		if len(body) > 1000 {
 			body = body[:1000] + "..."
 		}
@@ -430,15 +500,6 @@ func (p *ReliefWebProvider) generateMetadata(report ReliefWebReport) map[string]
 			countries = append(countries, country.Name)
 		}
 		metadata["countries"] = strings.Join(countries, ", ")
-	}
-	
-	// Add themes
-	if len(report.Fields.Theme) > 0 {
-		themes := []string{}
-		for _, theme := range report.Fields.Theme {
-			themes = append(themes, theme.Name)
-		}
-		metadata["themes"] = strings.Join(themes, ", ")
 	}
 	
 	// Add disaster type
@@ -461,7 +522,7 @@ func (p *ReliefWebProvider) generateMetadata(report ReliefWebReport) map[string]
 
 // generateBadges creates badges for the disaster report
 func (p *ReliefWebProvider) generateBadges(report ReliefWebReport) []model.Badge {
-	timestamp := p.parseDate(report.Fields.Date.Created)
+	timestamp := report.Fields.Date.Created
 	badges := []model.Badge{
 		{
 			Label:     "ReliefWeb",
@@ -488,7 +549,7 @@ func (p *ReliefWebProvider) generateBadges(report ReliefWebReport) []model.Badge
 	// Add severity badge
 	severity := p.determineSeverity(report)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})
@@ -503,16 +564,17 @@ func (p *ReliefWebProvider) generateBadges(report ReliefWebReport) []model.Badge
 		})
 	}
 	
-	// Add report type badge
-	if strings.Contains(report.Fields.PrimaryType, "Situation Report") {
+	// Add report type badge based on status
+	status := strings.ToLower(report.Fields.Status)
+	if strings.Contains(status, "emergency") {
 		badges = append(badges, model.Badge{
-			Label:     "SitRep",
+			Label:     "Emergency",
 			Type:      "report_type",
 			Timestamp: timestamp,
 		})
-	} else if strings.Contains(report.Fields.PrimaryType, "Flash Update") {
+	} else if strings.Contains(status, "alert") {
 		badges = append(badges, model.Badge{
-			Label:     "Flash Update",
+			Label:     "Alert",
 			Type:      "report_type",
 			Timestamp: timestamp,
 		})

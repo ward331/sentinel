@@ -27,10 +27,6 @@ func NewGlobalForestWatchProvider() *GlobalForestWatchProvider {
 	}
 }
 
-// Name returns the provider name
-func (p *GlobalForestWatchProvider) Name() string {
-	return p.name
-}
 
 // Fetch retrieves fire alerts from Global Forest Watch
 func (p *GlobalForestWatchProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

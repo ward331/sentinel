@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,21 +17,8 @@ type PiracyIMBProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *PiracyIMBProvider) Name() string {
-    return "piracyimb"
-}
 
-// Interval returns the polling interval
-func (p *PiracyIMBProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1h")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *PiracyIMBProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewPiracyIMBProvider creates a new PiracyIMBProvider
 func NewPiracyIMBProvider(config *Config) *PiracyIMBProvider {
@@ -319,7 +303,7 @@ func (p *PiracyIMBProvider) calculateMagnitude(incident IMBIncident) float64 {
 }
 
 // determineSeverity determines event severity based on piracy incident
-func (p *PiracyIMBProvider) determineSeverity(incident IMBIncident) string {
+func (p *PiracyIMBProvider) determineSeverity(incident IMBIncident) model.Severity {
 	incidentType := strings.ToLower(incident.Type)
 	
 	switch incidentType {
@@ -373,7 +357,7 @@ func (p *PiracyIMBProvider) generateMetadata(incident IMBIncident) map[string]st
 	
 	// Determine risk level
 	severity := p.determineSeverity(incident)
-	metadata["risk_level"] = severity
+	metadata["risk_level"] = string(severity)
 	
 	// Determine region
 	location := strings.ToLower(incident.Location)
@@ -420,7 +404,7 @@ func (p *PiracyIMBProvider) generateBadges(incident IMBIncident, timestamp time.
 	// Add severity badge
 	severity := p.determineSeverity(incident)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})

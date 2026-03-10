@@ -18,21 +18,8 @@ type IranConflictProvider struct {
 	interval time.Duration
 }
 
-// Name returns the provider name
-func (p *IranConflictProvider) Name() string {
-    return "iranconflict"
-}
 
-// Interval returns the polling interval
-func (p *IranConflictProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("5m")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *IranConflictProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewIranConflictProvider creates a new Iran conflict data provider
 func NewIranConflictProvider() *IranConflictProvider {
@@ -43,10 +30,6 @@ func NewIranConflictProvider() *IranConflictProvider {
 	}
 }
 
-// Name returns the provider name
-func (p *IranConflictProvider) Name() string {
-	return p.name
-}
 
 // Fetch retrieves Iran conflict data
 func (p *IranConflictProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
@@ -256,10 +239,6 @@ func NewISWProvider() *ISWProvider {
 	}
 }
 
-// Name returns the provider name
-func (p *ISWProvider) Name() string {
-	return p.name
-}
 
 // Fetch retrieves ISW RSS feed data
 func (p *ISWProvider) Fetch(ctx context.Context) ([]*model.Event, error) {

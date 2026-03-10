@@ -20,21 +20,8 @@ type ProMEDProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *ProMEDProvider) Name() string {
-    return "promed"
-}
 
-// Interval returns the polling interval
-func (p *ProMEDProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("1h")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *ProMEDProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewProMEDProvider creates a new ProMEDProvider
 func NewProMEDProvider(config *Config) *ProMEDProvider {
@@ -525,7 +512,7 @@ func (p *ProMEDProvider) calculateMagnitude(item RSSItem) float64 {
 }
 
 // determineSeverity determines the event severity
-func (p *ProMEDProvider) determineSeverity(item RSSItem) string {
+func (p *ProMEDProvider) determineSeverity(item RSSItem) model.Severity {
 	text := strings.ToLower(item.Title + " " + item.Description)
 	
 	if strings.Contains(text, "pandemic") {
@@ -647,7 +634,7 @@ func (p *ProMEDProvider) generateBadges(item RSSItem) []model.Badge {
 	// Add severity badge
 	severity := p.determineSeverity(item)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: timestamp,
 	})

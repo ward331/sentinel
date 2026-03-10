@@ -258,7 +258,7 @@ func (p *TsunamiProvider) calculateMagnitude(item RSSItem) float64 {
 }
 
 // determineSeverity determines the event severity
-func (p *TsunamiProvider) determineSeverity(item RSSItem) string {
+func (p *TsunamiProvider) determineSeverity(item RSSItem) model.Severity {
 	desc := strings.ToLower(item.Description)
 	title := strings.ToLower(item.Title)
 	
@@ -289,10 +289,6 @@ func (p *TsunamiProvider) generateMetadata(item RSSItem) map[string]string {
 	
 	if item.GUID != "" {
 		metadata["guid"] = item.GUID
-	}
-	
-	if item.Author != "" {
-		metadata["author"] = item.Author
 	}
 	
 	if item.Category != "" {
@@ -337,7 +333,7 @@ func (p *TsunamiProvider) generateBadges(item RSSItem) []model.Badge {
 	// Add severity badge
 	severity := p.determineSeverity(item)
 	badges = append(badges, model.Badge{
-		Label:     strings.Title(severity),
+		Label:     strings.Title(string(severity)),
 		Type:      "severity",
 		Timestamp: p.parsePubDate(item.PubDate),
 	})
@@ -400,25 +396,4 @@ func (p *TsunamiProvider) parsePubDate(pubDate string) time.Time {
 	return time.Now().UTC()
 }
 
-// RSS structures for parsing PTWC RSS feed
-type RSSFeed struct {
-	XMLName xml.Name `xml:"rss"`
-	Channel Channel  `xml:"channel"`
-}
-
-type Channel struct {
-	Title       string    `xml:"title"`
-	Link        string    `xml:"link"`
-	Description string    `xml:"description"`
-	Items       []RSSItem `xml:"item"`
-}
-
-type RSSItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-	GUID        string `xml:"guid"`
-	Author      string `xml:"author"`
-	Category    string `xml:"category"`
-}
+// Using shared RSS types from common.go

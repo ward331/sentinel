@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,21 +18,8 @@ type NASAFIRMSProvider struct {
 	config *Config
 }
 
-// Name returns the provider name
-func (p *NASAFIRMSProvider) Name() string {
-    return "nasafirms"
-}
 
-// Interval returns the polling interval
-func (p *NASAFIRMSProvider) Interval() time.Duration {
-    interval, _ := time.ParseDuration("15m")
-    return interval
-}
 
-// Enabled returns whether the provider is enabled
-func (p *NASAFIRMSProvider) Enabled() bool {
-    return p.config != nil && p.config.Enabled
-}
 
 // NewNASAFIRMSProvider creates a new NASAFIRMSProvider
 func NewNASAFIRMSProvider(config *Config) *NASAFIRMSProvider {
@@ -355,7 +341,7 @@ func (p *NASAFIRMSProvider) calculateMagnitude(brightness, frp float64, confiden
 }
 
 // determineSeverity determines event severity based on fire intensity
-func (p *NASAFIRMSProvider) determineSeverity(brightness, frp float64) string {
+func (p *NASAFIRMSProvider) determineSeverity(brightness, frp float64) model.Severity {
 	if brightness > 400 || frp > 1000 {
 		return model.SeverityCritical
 	} else if brightness > 330 || frp > 100 {
