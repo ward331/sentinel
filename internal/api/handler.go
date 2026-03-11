@@ -718,6 +718,9 @@ func (h *Handler) Router() *mux.Router {
 		r.HandleFunc("/api/events/log/rotate", h.RotateEventLog).Methods("POST")
 	}
 
+	// WebSocket streaming endpoint (same data as SSE, over WebSocket)
+	r.HandleFunc("/api/ws", h.HandleWebSocket).Methods("GET")
+
 	// Event routes — stream MUST be before {id}, acknowledge before bare {id}
 	r.HandleFunc("/api/events/stream", h.EventStream).Methods("GET")
 	r.HandleFunc("/api/events/{id}/acknowledge", h.AcknowledgeEvent).Methods("POST")
@@ -776,6 +779,9 @@ func (h *Handler) Router() *mux.Router {
 
 	// Metrics routes
 	r.HandleFunc("/api/metrics", h.GetMetrics).Methods("GET")
+
+	// Prometheus-compatible metrics endpoint
+	r.HandleFunc("/metrics", h.PrometheusMetrics).Methods("GET")
 
 	return r
 }

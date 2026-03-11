@@ -28,6 +28,7 @@ import (
 	"github.com/openclaw/sentinel-backend/internal/notify"
 	"github.com/openclaw/sentinel-backend/internal/poller"
 	"github.com/openclaw/sentinel-backend/internal/provider"
+	"github.com/openclaw/sentinel-backend/internal/providers/aircraft"
 	"github.com/openclaw/sentinel-backend/internal/setup"
 	"github.com/openclaw/sentinel-backend/internal/storage"
 )
@@ -450,6 +451,16 @@ func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller
 	registerProvider(p, "otx_alienvault", provider.NewOTXAlienVaultProvider())
 	registerProvider(p, "bellingcat", provider.NewBellingcatProvider())
 	registerProvider(p, "isw", provider.NewISWProvider())
+
+	// ── OpenSky Enhanced: aircraft identification via Bellingcat DB ──
+	aircraftDB := aircraft.NewDatabase()
+	if err := aircraftDB.Load(); err != nil {
+		log.Printf("Aircraft DB not available (%v) — OpenSky Enhanced disabled, basic providers only", err)
+	} else {
+		log.Printf("Aircraft DB loaded: %d aircraft — OpenSky Enhanced provider enabled", aircraftDB.Count())
+		aircraftDB.AutoRefresh()
+		registerProvider(p, "opensky_enhanced", provider.NewOpenSkyEnhancedProvider(aircraftDB))
+	}
 
 	// ── Tier 1: free with API key — disabled if key missing ──
 	tier1Cfg := &provider.Config{

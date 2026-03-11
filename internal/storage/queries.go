@@ -723,3 +723,79 @@ func (s *Storage) scanV3Events(query string, args ...interface{}) ([]model.Event
 	}
 	return events, nil
 }
+
+// ---------------------------------------------------------------------------
+// Prometheus metric counts
+// ---------------------------------------------------------------------------
+
+// CountAllEvents returns the total number of events in the database.
+func (s *Storage) CountAllEvents() (int64, error) {
+	var count int64
+	err := s.db.QueryRow("SELECT COUNT(*) FROM events").Scan(&count)
+	return count, err
+}
+
+// CountEventsByCategory returns event counts grouped by category.
+func (s *Storage) CountEventsByCategory() (map[string]int64, error) {
+	rows, err := s.db.Query("SELECT COALESCE(category,'unknown'), COUNT(*) FROM events GROUP BY category")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]int64)
+	for rows.Next() {
+		var cat string
+		var count int64
+		if err := rows.Scan(&cat, &count); err != nil {
+			return nil, err
+		}
+		if cat == "" {
+			cat = "unknown"
+		}
+		result[cat] = count
+	}
+	return result, nil
+}
+
+// CountEventsBySeverity returns event counts grouped by severity.
+func (s *Storage) CountEventsBySeverity() (map[string]int64, error) {
+	rows, err := s.db.Query("SELECT COALESCE(severity,'unknown'), COUNT(*) FROM events GROUP BY severity")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]int64)
+	for rows.Next() {
+		var sev string
+		var count int64
+		if err := rows.Scan(&sev, &count); err != nil {
+			return nil, err
+		}
+		if sev == "" {
+			sev = "unknown"
+		}
+		result[sev] = count
+	}
+	return result, nil
+}
+
+// CountCorrelations returns the total number of correlation flashes.
+func (s *Storage) CountCorrelations() (int64, error) {
+	var count int64
+	err := s.db.QueryRow("SELECT COUNT(*) FROM correlations").Scan(&count)
+	return count, err
+}
+
+// CountAnomalies returns the total number of anomalies.
+func (s *Storage) CountAnomalies() (int64, error) {
+	var count int64
+	err := s.db.QueryRow("SELECT COUNT(*) FROM anomalies").Scan(&count)
+	return count, err
+}
+
+// CountNewsItems returns the total number of news items.
+func (s *Storage) CountNewsItems() (int64, error) {
+	var count int64
+	err := s.db.QueryRow("SELECT COUNT(*) FROM news_items").Scan(&count)
+	return count, err
+}
