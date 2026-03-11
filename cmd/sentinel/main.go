@@ -246,7 +246,7 @@ func startServer(cfg *config.Config) error {
 		statusMark("anomaly", true),
 		statusMark("signal-board", cfg.SignalBoard.Enabled),
 		statusMark("dead-reckoning", cfg.EntityTracking.Enabled),
-		statusMark("proximity", proximityEnabled),
+		statusMark("proximity", proxAlert != nil),
 	}, " | ")
 
 	enabledChannels := notifyDispatcher.EnabledChannelNames()
