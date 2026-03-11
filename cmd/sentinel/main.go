@@ -5,11 +5,13 @@ import (
 	"embed"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 	"github.com/openclaw/sentinel-backend/internal/engine"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
-	_ "github.com/openclaw/sentinel-backend/internal/notify"
+	"github.com/openclaw/sentinel-backend/internal/notify"
 	"github.com/openclaw/sentinel-backend/internal/poller"
 	"github.com/openclaw/sentinel-backend/internal/provider"
 	"github.com/openclaw/sentinel-backend/internal/setup"
@@ -29,17 +31,32 @@ import (
 var webFS embed.FS
 
 var (
-	configPath  = flag.String("config", "", "Path to configuration file")
-	dataDir     = flag.String("data-dir", "", "Data directory for database and files")
-	port        = flag.Int("port", 8080, "Port to listen on")
-	host        = flag.String("host", "localhost", "Host to bind to")
-	version     = flag.Bool("version", false, "Show version information")
-	wizard      = flag.Bool("wizard", false, "Run first-run setup wizard")
-	noFrontend  = flag.Bool("no-frontend", false, "API only — do not serve embedded frontend")
+	configPath = flag.String("config", "", "Path to configuration file")
+	dataDir    = flag.String("data-dir", "", "Data directory for database and files")
+	port       = flag.Int("port", 8080, "Port to listen on")
+	host       = flag.String("host", "localhost", "Host to bind to")
+	version    = flag.Bool("version", false, "Show version information")
+	wizard     = flag.Bool("wizard", false, "Run first-run setup wizard")
+	noFrontend = flag.Bool("no-frontend", false, "API only — do not serve embedded frontend")
 )
 
-// Version is set during build
+// Version is set during build via -ldflags.
 var Version = "v3.0.0"
+
+// tier1ProviderNames lists provider names that require API keys.
+var tier1ProviderNames = map[string]bool{
+	"adsbexchange":   true,
+	"aisstream":      true,
+	"acled":          true,
+	"openweathermap": true,
+	"nasa_firms_rt":  true,
+	"spacetrack":     true,
+	"alpha_vantage":  true,
+	"finnhub":        true,
+	"fred":           true,
+	"shodan":         true,
+	"abusech":        true,
+}
 
 func main() {
 	flag.Parse()
@@ -49,13 +66,13 @@ func main() {
 		return
 	}
 
-	// Load configuration
+	// ── 1. Load configuration ───────────────────────────────
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Run wizard if requested or first run
+	// ── 2. Wizard (first-run or --wizard) ───────────────────
 	if *wizard || !cfg.SetupComplete {
 		if *wizard {
 			if err := setup.RunIfNeeded(cfg); err != nil {
@@ -64,18 +81,16 @@ func main() {
 		}
 	}
 
-	// Start server
+	// ── 3. Start the server ─────────────────────────────────
 	if err := startServer(cfg); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
 
-// loadConfig loads configuration from file or CLI flags
+// loadConfig loads configuration from file or CLI flags.
 func loadConfig() (*config.Config, error) {
-	// Start with default config
 	cfg := config.DefaultConfig()
 
-	// Load from file if specified
 	if *configPath != "" {
 		fileConfig, err := config.LoadConfig(*configPath)
 		if err != nil {
@@ -88,10 +103,10 @@ func loadConfig() (*config.Config, error) {
 	if *dataDir != "" {
 		cfg.DataDir = *dataDir
 	}
-	if *port != 8080 { // Only override if not default
+	if *port != 8080 {
 		cfg.Server.Port = *port
 	}
-	if *host != "localhost" { // Only override if not default
+	if *host != "localhost" {
 		cfg.Server.Host = *host
 	}
 
@@ -103,10 +118,8 @@ func loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// startServer starts the HTTP server with poller integration
+// startServer initializes all V3 components and starts the HTTP server.
 func startServer(cfg *config.Config) error {
-	log.Printf("SENTINEL %s starting...", Version)
-
 	// ── 1. Storage ──────────────────────────────────────────
 	dbPath := filepath.Join(cfg.DataDir, "sentinel.db")
 	store, err := storage.NewWithConfig(dbPath, true, 10)
@@ -115,7 +128,6 @@ func startServer(cfg *config.Config) error {
 	}
 	defer store.Close()
 
-	// Run V3 schema migration (safe to run multiple times)
 	if err := storage.RunV3Migration(store.DB()); err != nil {
 		return fmt.Errorf("V3 migration failed: %w", err)
 	}
@@ -128,9 +140,11 @@ func startServer(cfg *config.Config) error {
 
 	pollerInstance.Start()
 	defer pollerInstance.Stop()
-	log.Printf("Poller started with %d providers", len(pollerInstance.GetProviderNames()))
 
-	// ── 3. Engine (V3) ──────────────────────────────────────
+	// Count enabled providers by tier
+	tier0Count, tier1Count := countProvidersByTier(pollerInstance)
+
+	// ── 3. Intelligence Engines ─────────────────────────────
 	correlationEngine := engine.NewCorrelationEngine()
 	correlationEngine.SetStorage(store)
 	correlationEngine.Start(ctx)
@@ -160,69 +174,121 @@ func startServer(cfg *config.Config) error {
 	deadReckoning.Start(ctx)
 	defer deadReckoning.Stop()
 
-	log.Printf("Intelligence engines started: correlation, truth, anomaly, signal_board, dead_reckoning")
+	// ── 4. Notification Dispatcher ──────────────────────────
+	dispatcher := initializeNotifications(cfg)
 
-	// ── 4. API ──────────────────────────────────────────────
+	// ── 4b. Proximity Alert Engine ──────────────────────────
+	var proxAlert *engine.ProximityAlert
+	if cfg.Location.Set {
+		proxAlert = engine.NewProximityAlert(cfg.Location, func(title, body, severity string) {
+			dispatcher.Dispatch(context.Background(), notify.Alert{
+				Title:      title,
+				Body:       body,
+				Severity:   severity,
+				Category:   "proximity",
+				OccurredAt: time.Now(),
+			})
+		})
+		log.Printf("Proximity alerts enabled: %.4f,%.4f radius %.0fkm",
+			cfg.Location.Lat, cfg.Location.Lon, proxAlert.RadiusKm)
+	}
+
+	// ── 5. API Handler ──────────────────────────────────────
 	metricsInst := metrics.NewMetrics()
 	healthRegistry := health.NewHealthRegistry()
 
 	apiHandler := api.NewHandler(store, metricsInst, healthRegistry)
 	apiHandler.SetPoller(pollerInstance)
 	apiHandler.SetConfig(cfg)
+	if proxAlert != nil {
+		apiHandler.SetProximityEngine(proxAlert)
+	}
 	router := apiHandler.Router()
 
-	// OSINT resources
+	// OSINT resources sub-router
 	osintStorage := storage.NewOSINTStorage(store.DB())
 	osintHandler := api.NewOSINTResourcesHandler(osintStorage)
 	osintRouter := router.PathPrefix("/api/osint").Subrouter()
 	osintHandler.RegisterRoutes(osintRouter)
-	log.Printf("OSINT resources API initialized")
-	log.Printf("Filter API: Basic filtering available via query parameters")
 
-	// ── 5. Middleware ───────────────────────────────────────
+	// ── 6. Embedded Frontend ────────────────────────────────
+	frontendMode := "disabled"
+	if !*noFrontend {
+		webSub, fsErr := fs.Sub(webFS, "web")
+		if fsErr != nil {
+			log.Printf("WARNING: failed to mount embedded frontend: %v", fsErr)
+		} else {
+			router.PathPrefix("/").Handler(http.FileServer(http.FS(webSub)))
+			frontendMode = "embedded"
+		}
+	}
+
+	// ── 7. Middleware Stack ─────────────────────────────────
 	var handler http.Handler = router
 
 	handler = api.CORSMiddleware(handler)
 
-	rateLimitConfig := api.DefaultRateLimitConfig()
-	rateLimitConfig.Enabled = true
-	rateLimitConfig.RPS = 100
-	rateLimitConfig.Burst = 200
-	handler = api.RateLimitMiddleware(rateLimitConfig)(handler)
+	rlCfg := api.DefaultRateLimitConfig()
+	rlCfg.Enabled = true
+	rlCfg.RPS = 100
+	rlCfg.Burst = 200
+	handler = api.RateLimitMiddleware(rlCfg)(handler)
 
-	authConfig := api.DefaultAuthConfig()
-	authConfig.Enabled = false
-	authConfig.APIKeys = []string{"test-api-key-123"}
-	handler = api.AuthMiddleware(authConfig)(handler)
+	authCfg := api.DefaultAuthConfig()
+	authCfg.Enabled = cfg.Server.AuthEnabled
+	if cfg.Server.AuthToken != "" {
+		authCfg.APIKeys = []string{cfg.Server.AuthToken}
+	}
+	handler = api.AuthMiddleware(authCfg)(handler)
 
-	log.Printf("Security middleware applied: CORS=%v, RateLimit=%v, Auth=%v",
-		true, rateLimitConfig.Enabled, authConfig.Enabled)
+	// ── 8. Startup Summary ──────────────────────────────────
+	enabledTotal := tier0Count + tier1Count
+	engineSummary := strings.Join([]string{
+		check("correlation", true),
+		check("truth", true),
+		check("anomaly", true),
+		check("signal-board", cfg.SignalBoard.Enabled),
+		check("dead-reckoning", cfg.EntityTracking.Enabled),
+		check("proximity", proxAlert != nil),
+	}, " | ")
 
-	// ── 6. Serve ────────────────────────────────────────────
+	notifyNames := dispatcher.EnabledChannelNames()
+	notifySummary := "none"
+	if len(notifyNames) > 0 {
+		notifySummary = strings.Join(notifyNames, " | ")
+	}
+
+	log.Printf("\n"+
+		"    SENTINEL %s starting...\n"+
+		"    Port: %d\n"+
+		"    Data: %s\n"+
+		"    Providers: %d enabled (%d tier-0, %d tier-1)\n"+
+		"    Engine: %s\n"+
+		"    Notifications: %s\n"+
+		"    Frontend: %s\n"+
+		"    Ready.",
+		Version, cfg.Server.Port, cfg.DataDir,
+		enabledTotal, tier0Count, tier1Count,
+		engineSummary, notifySummary, frontendMode,
+	)
+
+	// ── 9. HTTP Server ──────────────────────────────────────
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("Starting SENTINEL server on %s", server.Addr)
-		log.Printf("Data directory: %s", cfg.DataDir)
-		log.Printf("Database: %s", dbPath)
-		if !*noFrontend {
-			log.Printf("Frontend: embedded (web/)")
-		} else {
-			log.Printf("Frontend: disabled (--no-frontend)")
-		}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
 	}()
 
-	// Wait for interrupt
+	// ── 10. Wait for SIGTERM / SIGINT ───────────────────────
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -233,12 +299,14 @@ func startServer(cfg *config.Config) error {
 		log.Printf("Server error: %v", err)
 	}
 
-	// Graceful shutdown
-	log.Println("Shutting down server...")
-	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	// ── 11. Graceful Shutdown ───────────────────────────────
+	log.Println("Shutting down...")
+	cancel() // stops all engine goroutines via ctx
 
-	if err := server.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown failed: %w", err)
 	}
 
@@ -246,38 +314,78 @@ func startServer(cfg *config.Config) error {
 	return nil
 }
 
-// initializePoller creates and configures the poller with all providers
+// ─── Notification Dispatcher ────────────────────────────────────────────────
+
+// initializeNotifications creates notification channels from config.
+func initializeNotifications(cfg *config.Config) *notify.Dispatcher {
+	var channels []notify.Channel
+
+	if cfg.Telegram.Enabled {
+		channels = append(channels,
+			notify.NewTelegramChannel(cfg.Telegram.BotToken, cfg.Telegram.ChatID, true))
+	}
+	if cfg.Slack.Enabled {
+		channels = append(channels,
+			notify.NewSlackChannel(cfg.Slack.WebhookURL, true))
+	}
+	if cfg.Discord.Enabled {
+		channels = append(channels,
+			notify.NewDiscordChannel(cfg.Discord.WebhookURL, true))
+	}
+	if cfg.Ntfy.Enabled {
+		channels = append(channels,
+			notify.NewNtfyChannel(cfg.Ntfy.Server, cfg.Ntfy.Topic, true))
+	}
+	if cfg.Pushover.Enabled {
+		channels = append(channels,
+			notify.NewPushoverChannel(cfg.Pushover.UserKey, cfg.Pushover.AppToken, true))
+	}
+	if cfg.Email.Enabled {
+		channels = append(channels,
+			notify.NewEmailChannel(
+				cfg.Email.SMTPHost, cfg.Email.SMTPPort,
+				cfg.Email.FromAddress, cfg.Email.ToAddresses,
+				cfg.Email.Username, "", // password decrypted at runtime if needed
+				true,
+			))
+	}
+
+	return notify.NewDispatcher(channels...)
+}
+
+// ─── Provider Registration ──────────────────────────────────────────────────
+
+// initializePoller creates the poller and registers all providers.
 func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller {
 	p := poller.NewPoller(store)
 
-	// Create provider config from main config
-	providerConfig := &provider.Config{
+	tier0Cfg := &provider.Config{
 		Enabled:      true,
 		PollInterval: 5 * time.Minute,
 	}
 
-	// Register all providers
-	registerProvider(p, "usgs", provider.NewUSGSProvider(providerConfig))
-	registerProvider(p, "gdacs", provider.NewGDACSProvider(providerConfig))
-	registerProvider(p, "noaa_cap", provider.NewNOAACAPProvider(providerConfig))
-	registerProvider(p, "noaa_nws", provider.NewNOAANWSProvider(providerConfig))
-	registerProvider(p, "tsunami", provider.NewTsunamiProvider(providerConfig))
-	registerProvider(p, "volcano", provider.NewVolcanoProvider(providerConfig))
-	registerProvider(p, "reliefweb", provider.NewReliefWebProvider(providerConfig))
-	registerProvider(p, "airplanes_live", provider.NewAirplanesLiveProvider(providerConfig))
-	registerProvider(p, "adsb_one", provider.NewADSBOneProvider(providerConfig))
+	// ── Tier 0: free, no API key required ──
+	registerProvider(p, "usgs", provider.NewUSGSProvider(tier0Cfg))
+	registerProvider(p, "gdacs", provider.NewGDACSProvider(tier0Cfg))
+	registerProvider(p, "noaa_cap", provider.NewNOAACAPProvider(tier0Cfg))
+	registerProvider(p, "noaa_nws", provider.NewNOAANWSProvider(tier0Cfg))
+	registerProvider(p, "tsunami", provider.NewTsunamiProvider(tier0Cfg))
+	registerProvider(p, "volcano", provider.NewVolcanoProvider(tier0Cfg))
+	registerProvider(p, "reliefweb", provider.NewReliefWebProvider(tier0Cfg))
+	registerProvider(p, "airplanes_live", provider.NewAirplanesLiveProvider(tier0Cfg))
+	registerProvider(p, "adsb_one", provider.NewADSBOneProvider(tier0Cfg))
 	registerProvider(p, "openmeteo", provider.NewOpenMeteoProvider())
 	registerProvider(p, "iranconflict", provider.NewIranConflictProvider())
-	registerProvider(p, "liveuamap", provider.NewLiveUAMapProvider(providerConfig))
+	registerProvider(p, "liveuamap", provider.NewLiveUAMapProvider(tier0Cfg))
 	registerProvider(p, "gdelt", provider.NewGDELTProvider())
 	registerProvider(p, "globalforestwatch", provider.NewGlobalForestWatchProvider())
-	registerProvider(p, "celestrak", provider.NewCelesTrakProvider(providerConfig))
-	registerProvider(p, "swpc", provider.NewSWPCProvider(providerConfig))
-	registerProvider(p, "who", provider.NewWHOProvider(providerConfig))
-	registerProvider(p, "promed", provider.NewProMEDProvider(providerConfig))
-	registerProvider(p, "nasa_firms", provider.NewNASAFIRMSProvider(providerConfig))
-	registerProvider(p, "piracy_imb", provider.NewPiracyIMBProvider(providerConfig))
-	registerProvider(p, "financial_markets", provider.NewFinancialMarketsProvider(providerConfig))
+	registerProvider(p, "celestrak", provider.NewCelesTrakProvider(tier0Cfg))
+	registerProvider(p, "swpc", provider.NewSWPCProvider(tier0Cfg))
+	registerProvider(p, "who", provider.NewWHOProvider(tier0Cfg))
+	registerProvider(p, "promed", provider.NewProMEDProvider(tier0Cfg))
+	registerProvider(p, "nasa_firms", provider.NewNASAFIRMSProvider(tier0Cfg))
+	registerProvider(p, "piracy_imb", provider.NewPiracyIMBProvider(tier0Cfg))
+	registerProvider(p, "financial_markets", provider.NewFinancialMarketsProvider(tier0Cfg))
 	registerProvider(p, "opensanctions", provider.NewOpenSanctionsProvider(""))
 	registerProvider(p, "pikud_haoref", provider.NewPikudHaOrefProvider())
 	registerProvider(p, "ukraine_alerts", provider.NewUkraineAlertsProvider())
@@ -288,29 +396,52 @@ func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller
 	registerProvider(p, "bellingcat", provider.NewBellingcatProvider())
 	registerProvider(p, "isw", provider.NewISWProvider())
 
-	// ── Tier 1 providers (free with API key — disabled if key missing) ──
-	tier1Config := &provider.Config{
+	// ── Tier 1: free with API key — disabled if key missing ──
+	tier1Cfg := &provider.Config{
 		Enabled:      true,
 		PollInterval: 5 * time.Minute,
 		Options:      make(map[string]string),
 	}
-	registerProvider(p, "adsbexchange", provider.NewADSBExchangeProvider(tier1Config))
-	registerProvider(p, "aisstream", provider.NewAISStreamProvider(tier1Config))
-	registerProvider(p, "acled", provider.NewACLEDProvider(tier1Config))
-	registerProvider(p, "openweathermap", provider.NewOpenWeatherMapProvider(tier1Config))
-	registerProvider(p, "nasa_firms_rt", provider.NewNASAFIRMSRTProvider(tier1Config))
-	registerProvider(p, "spacetrack", provider.NewSpaceTrackProvider(tier1Config))
-	registerProvider(p, "alpha_vantage", provider.NewAlphaVantageProvider(tier1Config))
-	registerProvider(p, "finnhub", provider.NewFinnhubProvider(tier1Config))
-	registerProvider(p, "fred", provider.NewFREDProvider(tier1Config))
-	registerProvider(p, "shodan", provider.NewShodanProvider(tier1Config))
-	registerProvider(p, "abusech", provider.NewAbuseCHProvider(tier1Config))
+	registerProvider(p, "adsbexchange", provider.NewADSBExchangeProvider(tier1Cfg))
+	registerProvider(p, "aisstream", provider.NewAISStreamProvider(tier1Cfg))
+	registerProvider(p, "acled", provider.NewACLEDProvider(tier1Cfg))
+	registerProvider(p, "openweathermap", provider.NewOpenWeatherMapProvider(tier1Cfg))
+	registerProvider(p, "nasa_firms_rt", provider.NewNASAFIRMSRTProvider(tier1Cfg))
+	registerProvider(p, "spacetrack", provider.NewSpaceTrackProvider(tier1Cfg))
+	registerProvider(p, "alpha_vantage", provider.NewAlphaVantageProvider(tier1Cfg))
+	registerProvider(p, "finnhub", provider.NewFinnhubProvider(tier1Cfg))
+	registerProvider(p, "fred", provider.NewFREDProvider(tier1Cfg))
+	registerProvider(p, "shodan", provider.NewShodanProvider(tier1Cfg))
+	registerProvider(p, "abusech", provider.NewAbuseCHProvider(tier1Cfg))
 
 	return p
 }
 
-// registerProvider registers a provider with the poller
+// registerProvider registers a single provider with the poller.
 func registerProvider(p *poller.Poller, name string, prov provider.Provider) {
 	p.RegisterProvider(name, prov)
-	log.Printf("Registered provider: %s (interval: %v, enabled: %v)", name, prov.Interval(), prov.Enabled())
+}
+
+// countProvidersByTier counts enabled providers split by tier.
+func countProvidersByTier(p *poller.Poller) (tier0, tier1 int) {
+	for _, name := range p.GetProviderNames() {
+		prov, ok := p.GetProvider(name)
+		if !ok || !prov.Enabled() {
+			continue
+		}
+		if tier1ProviderNames[name] {
+			tier1++
+		} else {
+			tier0++
+		}
+	}
+	return
+}
+
+// check returns "name ok" or "name off" for the startup log.
+func check(name string, on bool) string {
+	if on {
+		return name + " ok"
+	}
+	return name + " off"
 }
