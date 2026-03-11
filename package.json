@@ -1,8 +1,8 @@
 {
   "name": "sentinel-watchtower",
   "private": true,
-  "version": "1.0.0",
-  "description": "Watchtower — Real-time web frontend for SENTINEL V2 global event monitoring",
+  "version": "4.0.0",
+  "description": "SENTINEL V4 — Shadowbroker-style OSINT intelligence dashboard with MapLibre GL",
   "type": "module",
   "scripts": {
     "dev": "vite",
