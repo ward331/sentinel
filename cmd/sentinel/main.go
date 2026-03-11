@@ -131,23 +131,35 @@ func startServer(cfg *config.Config) error {
 
 	// ── 3. Engine (V3) ──────────────────────────────────────
 	correlationEngine := engine.NewCorrelationEngine()
-	_ = correlationEngine // wired into scheduler in G3
+	correlationEngine.SetStorage(store)
+	correlationEngine.Start(ctx)
+	defer correlationEngine.Stop()
 
 	truthCalc := engine.NewTruthScoreCalculator()
-	_ = truthCalc
+	truthCalc.SetStorage(store)
+	truthCalc.Start(ctx)
+	defer truthCalc.Stop()
 
 	anomalyDetector := engine.NewAnomalyDetector()
-	_ = anomalyDetector
+	anomalyDetector.SetStorage(store)
+	anomalyDetector.Start(ctx)
+	defer anomalyDetector.Stop()
 
 	signalBoard := engine.NewSignalBoard(cfg.SignalBoard.Enabled)
-	_ = signalBoard
+	signalBoard.SetStorage(store)
+	signalBoard.Start(ctx)
+	defer signalBoard.Stop()
 
 	drMins := 30
 	if cfg.EntityTracking.DeadReckoningMins > 0 {
 		drMins = cfg.EntityTracking.DeadReckoningMins
 	}
 	deadReckoning := engine.NewDeadReckoningEngine(drMins)
-	_ = deadReckoning
+	deadReckoning.SetStorage(store)
+	deadReckoning.Start(ctx)
+	defer deadReckoning.Stop()
+
+	log.Printf("Intelligence engines started: correlation, truth, anomaly, signal_board, dead_reckoning")
 
 	// ── 4. API ──────────────────────────────────────────────
 	metricsInst := metrics.NewMetrics()
@@ -265,6 +277,15 @@ func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller
 	registerProvider(p, "nasa_firms", provider.NewNASAFIRMSProvider(providerConfig))
 	registerProvider(p, "piracy_imb", provider.NewPiracyIMBProvider(providerConfig))
 	registerProvider(p, "financial_markets", provider.NewFinancialMarketsProvider(providerConfig))
+	registerProvider(p, "opensanctions", provider.NewOpenSanctionsProvider(""))
+	registerProvider(p, "pikud_haoref", provider.NewPikudHaOrefProvider())
+	registerProvider(p, "ukraine_alerts", provider.NewUkraineAlertsProvider())
+	registerProvider(p, "ukmto", provider.NewUKMTOProvider())
+	registerProvider(p, "sec_edgar", provider.NewSECEdgarProvider())
+	registerProvider(p, "cisa_kev", provider.NewCISAKEVProvider())
+	registerProvider(p, "otx_alienvault", provider.NewOTXAlienVaultProvider())
+	registerProvider(p, "bellingcat", provider.NewBellingcatProvider())
+	registerProvider(p, "isw", provider.NewISWProvider())
 
 	return p
 }

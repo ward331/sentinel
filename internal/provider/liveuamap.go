@@ -51,15 +51,15 @@ func (p *LiveUAMapProvider) Interval() time.Duration {
 	return 15 * time.Minute
 }
 
-// acledResponse represents the ACLED API response
-type acledResponse struct {
-	Status int         `json:"status"`
-	Count  int         `json:"count"`
-	Data   []acledItem `json:"data"`
+// liveuamapACLEDResponse represents the ACLED API response (for LiveUAMap provider)
+type liveuamapACLEDResponse struct {
+	Status int              `json:"status"`
+	Count  int              `json:"count"`
+	Data   []liveuamapACLEDItem `json:"data"`
 }
 
-// acledItem represents a single ACLED conflict event
-type acledItem struct {
+// liveuamapACLEDItem represents a single ACLED conflict event (for LiveUAMap provider)
+type liveuamapACLEDItem struct {
 	DataID        string `json:"data_id"`
 	EventDate     string `json:"event_date"`
 	Year          string `json:"year"`
@@ -119,7 +119,7 @@ func (p *LiveUAMapProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 		return nil, fmt.Errorf("ACLED API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var apiResp acledResponse
+	var apiResp liveuamapACLEDResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode ACLED response: %w", err)
 	}
@@ -128,7 +128,7 @@ func (p *LiveUAMapProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 }
 
 // convertToEvents converts ACLED items to SENTINEL events
-func (p *LiveUAMapProvider) convertToEvents(items []acledItem) []*model.Event {
+func (p *LiveUAMapProvider) convertToEvents(items []liveuamapACLEDItem) []*model.Event {
 	events := make([]*model.Event, 0, len(items))
 
 	for _, item := range items {
@@ -178,7 +178,7 @@ func (p *LiveUAMapProvider) parseFloat(s string) float64 {
 }
 
 // generateTitle creates a title for the conflict event
-func (p *LiveUAMapProvider) generateTitle(item acledItem) string {
+func (p *LiveUAMapProvider) generateTitle(item liveuamapACLEDItem) string {
 	if item.SubEventType != "" {
 		return fmt.Sprintf("%s in %s, %s", item.SubEventType, item.Location, item.Country)
 	}
@@ -186,7 +186,7 @@ func (p *LiveUAMapProvider) generateTitle(item acledItem) string {
 }
 
 // generateDescription generates event description
-func (p *LiveUAMapProvider) generateDescription(item acledItem) string {
+func (p *LiveUAMapProvider) generateDescription(item liveuamapACLEDItem) string {
 	var desc strings.Builder
 
 	desc.WriteString("Conflict Event Report\n")
@@ -230,7 +230,7 @@ func (p *LiveUAMapProvider) generateDescription(item acledItem) string {
 }
 
 // calculateMagnitude calculates event magnitude
-func (p *LiveUAMapProvider) calculateMagnitude(item acledItem) float64 {
+func (p *LiveUAMapProvider) calculateMagnitude(item liveuamapACLEDItem) float64 {
 	magnitude := 2.5
 
 	text := strings.ToLower(item.EventType + " " + item.SubEventType + " " + item.Notes)
@@ -265,7 +265,7 @@ func (p *LiveUAMapProvider) calculateMagnitude(item acledItem) float64 {
 }
 
 // determineSeverity determines event severity
-func (p *LiveUAMapProvider) determineSeverity(item acledItem) model.Severity {
+func (p *LiveUAMapProvider) determineSeverity(item liveuamapACLEDItem) model.Severity {
 	text := strings.ToLower(item.EventType + " " + item.SubEventType + " " + item.Notes)
 
 	fatalities := 0
@@ -287,7 +287,7 @@ func (p *LiveUAMapProvider) determineSeverity(item acledItem) model.Severity {
 }
 
 // generateMetadata generates event metadata
-func (p *LiveUAMapProvider) generateMetadata(item acledItem) map[string]string {
+func (p *LiveUAMapProvider) generateMetadata(item liveuamapACLEDItem) map[string]string {
 	metadata := map[string]string{
 		"data_id":        item.DataID,
 		"event_type":     item.EventType,
@@ -313,7 +313,7 @@ func (p *LiveUAMapProvider) generateMetadata(item acledItem) map[string]string {
 }
 
 // generateBadges generates event badges
-func (p *LiveUAMapProvider) generateBadges(item acledItem) []model.Badge {
+func (p *LiveUAMapProvider) generateBadges(item liveuamapACLEDItem) []model.Badge {
 	badges := []model.Badge{
 		{
 			Type:      model.BadgeTypeSource,

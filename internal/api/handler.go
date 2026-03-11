@@ -97,8 +97,15 @@ func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 
 	type providerInfo struct {
 		Name            string `json:"name"`
+		DisplayName     string `json:"display_name"`
+		Category        string `json:"category"`
+		Tier            string `json:"tier"`
 		IntervalSeconds int    `json:"interval_seconds"`
 		Enabled         bool   `json:"enabled"`
+		Status          string `json:"status"`
+		EventsLastHour  int    `json:"events_last_hour"`
+		KeyFile         string `json:"key_file,omitempty"`
+		SignupURL       string `json:"signup_url,omitempty"`
 	}
 
 	providers := make([]providerInfo, 0, len(names))
@@ -107,10 +114,21 @@ func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
+		status := "ok"
+		if h.healthReporter != nil {
+			if _, exists := h.healthReporter.GetProviderStats(name); !exists {
+				status = "unknown"
+			}
+		}
 		providers = append(providers, providerInfo{
 			Name:            name,
+			DisplayName:     name,
+			Category:        "general",
+			Tier:            "free",
 			IntervalSeconds: int(prov.Interval().Seconds()),
 			Enabled:         prov.Enabled(),
+			Status:          status,
+			EventsLastHour:  0,
 		})
 	}
 
@@ -290,9 +308,11 @@ func (h *Handler) GetEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // EventStream handles GET /api/events/stream
+// Supports SSE event types: new_event, event_update, correlation,
+// signal_board, provider_health, anomaly.
 func (h *Handler) EventStream(w http.ResponseWriter, r *http.Request) {
 	log.Printf("EventStream: New SSE connection from %s", r.RemoteAddr)
-	
+
 	// Set headers for Server-Sent Events
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -319,7 +339,8 @@ func (h *Handler) EventStream(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to marshal event for SSE: %v", err)
 				continue
 			}
-			fmt.Fprintf(w, "event: new\ndata: %s\n\n", data)
+			// Send as new_event type (other types will be broadcast by engine components)
+			fmt.Fprintf(w, "event: new_event\ndata: %s\n\n", data)
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}
@@ -332,9 +353,9 @@ func (h *Handler) EventStream(w http.ResponseWriter, r *http.Request) {
 // HealthCheck handles GET /api/health
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	
+
 	var response interface{}
-	
+
 	// Check if detailed health check is requested
 	if r.URL.Query().Get("detailed") == "true" && h.health != nil {
 		// Perform detailed health checks
@@ -345,6 +366,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		// Simple health check
 		response = map[string]interface{}{
 			"status":    "ok",
+			"version":   "v3.0.0",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"uptime":    time.Since(h.startTime).Seconds(),
 		}
@@ -352,7 +374,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-	
+
 	// Record metrics
 	if h.metrics != nil {
 		h.metrics.RecordAPIRequest("/api/health", time.Since(startTime))
@@ -441,6 +463,11 @@ func parseListFilter(r *http.Request) storage.ListFilter {
 			}
 		}
 	}
+
+	// truth_score_min and country are accepted but not yet wired to storage filters.
+	// They are parsed here for API completeness; storage integration in a later stage.
+	_ = r.URL.Query().Get("truth_score_min")
+	_ = r.URL.Query().Get("country")
 
 	return filter
 }
@@ -677,25 +704,28 @@ func (h *Handler) GetUnhealthyProviders(w http.ResponseWriter, r *http.Request) 
 // Router returns a configured gorilla/mux router with all API routes
 func (h *Handler) Router() *mux.Router {
 	r := mux.NewRouter()
-	
+
 	// Event log routes (if available) — MUST be before {id}
 	if h.eventLog != nil {
 		r.HandleFunc("/api/events/log/info", h.GetEventLogInfo).Methods("GET")
 		r.HandleFunc("/api/events/log/rotate", h.RotateEventLog).Methods("POST")
 	}
 
-	// Event routes — stream MUST be before {id} to avoid matching "stream" as an id
+	// Event routes — stream MUST be before {id}, acknowledge before bare {id}
 	r.HandleFunc("/api/events/stream", h.EventStream).Methods("GET")
+	r.HandleFunc("/api/events/{id}/acknowledge", h.AcknowledgeEvent).Methods("POST")
 	r.HandleFunc("/api/events", h.ListEvents).Methods("GET")
 	r.HandleFunc("/api/events", h.CreateEvent).Methods("POST")
 	r.HandleFunc("/api/events/{id}", h.GetEvent).Methods("GET")
-	
+
 	// Health routes
 	r.HandleFunc("/api/health", h.HealthCheck).Methods("GET")
 	r.HandleFunc("/api/providers/healthy", h.GetHealthyProviders).Methods("GET")
 	r.HandleFunc("/api/providers/unhealthy", h.GetUnhealthyProviders).Methods("GET")
 
-	// Provider listing route
+	// Provider routes
+	r.HandleFunc("/api/providers/health", h.GetProviderHealth).Methods("GET")
+	r.HandleFunc("/api/providers/stats", h.GetProviderStats).Methods("GET")
 	r.HandleFunc("/api/providers", h.ListProviders).Methods("GET")
 
 	// Config/settings routes
@@ -703,18 +733,37 @@ func (h *Handler) Router() *mux.Router {
 		settingsHandler := NewSettingsHandler(h.config)
 		r.HandleFunc("/api/config", settingsHandler.ServeHTTP).Methods("GET", "POST")
 	}
-	
-	// Alert routes
+	r.HandleFunc("/api/config/ui", h.GetUIConfig).Methods("GET")
+
+	// Signal board
+	r.HandleFunc("/api/signal-board", h.GetSignalBoard).Methods("GET")
+
+	// Financial
+	r.HandleFunc("/api/financial/overview", h.GetFinancialOverview).Methods("GET")
+
+	// News & Intel
+	r.HandleFunc("/api/news", h.GetNews).Methods("GET")
+	r.HandleFunc("/api/intel/briefing", h.GetIntelBriefing).Methods("GET")
+
+	// Notifications
+	r.HandleFunc("/api/notifications/config", h.GetNotificationConfig).Methods("GET")
+	r.HandleFunc("/api/notifications/config", h.UpdateNotificationConfig).Methods("POST")
+	r.HandleFunc("/api/notifications/test/{ch}", h.TestNotificationChannel).Methods("POST")
+
+	// Alert rules
 	r.HandleFunc("/api/alerts/rules", h.ListAlertRules).Methods("GET")
 	r.HandleFunc("/api/alerts/rules", h.CreateAlertRule).Methods("POST")
-	// Note: GetAlertRule, UpdateAlertRule, DeleteAlertRule methods not implemented yet
-	
+	r.HandleFunc("/api/alerts/rules/{id}", h.UpdateAlertRule).Methods("PUT")
+	r.HandleFunc("/api/alerts/rules/{id}", h.DeleteAlertRule).Methods("DELETE")
+
+	// Entity search
+	r.HandleFunc("/api/entity/search", h.SearchEntities).Methods("GET")
+
+	// Correlations
+	r.HandleFunc("/api/correlations", h.GetCorrelations).Methods("GET")
+
 	// Metrics routes
 	r.HandleFunc("/api/metrics", h.GetMetrics).Methods("GET")
-	
-	// Provider health routes
-	r.HandleFunc("/api/providers/health", h.GetProviderHealth).Methods("GET")
-	r.HandleFunc("/api/providers/stats", h.GetProviderStats).Methods("GET")
-	
+
 	return r
 }

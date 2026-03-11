@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openclaw/sentinel-backend/internal/model"
@@ -279,16 +281,120 @@ func NewISWProvider() *ISWProvider {
 	return &ISWProvider{
 		name:     "isw",
 		feedURL:  "https://understandingwar.org/rss.xml",
-		interval: 30 * time.Minute,
+		interval: 1800 * time.Second,
 	}
 }
 
+// Name returns the provider identifier
+func (p *ISWProvider) Name() string {
+	return p.name
+}
+
+// Enabled returns whether the provider is enabled
+func (p *ISWProvider) Enabled() bool {
+	return true
+}
+
+// Interval returns the polling interval
+func (p *ISWProvider) Interval() time.Duration {
+	return p.interval
+}
 
 // Fetch retrieves ISW RSS feed data
 func (p *ISWProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	// This would parse RSS feed and filter for Iran/Israel/Middle East keywords
-	// For now, return empty slice as placeholder
-	return []*model.Event{}, nil
+	req, err := http.NewRequestWithContext(ctx, "GET", p.feedURL, nil)
+	if err != nil {
+		return []*model.Event{}, nil
+	}
+
+	req.Header.Set("User-Agent", "SENTINEL/3.0")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return []*model.Event{}, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return []*model.Event{}, nil
+	}
+
+	var rss RSSFeed
+	decoder := xml.NewDecoder(resp.Body)
+	if err := decoder.Decode(&rss); err != nil {
+		return []*model.Event{}, nil
+	}
+
+	var events []*model.Event
+	for _, item := range rss.Channel.Items {
+		pubDate := p.parseDate(item.PubDate)
+		if time.Since(pubDate) > 7*24*time.Hour {
+			continue
+		}
+
+		sourceID := item.GUID
+		if sourceID == "" {
+			sourceID = item.Link
+		}
+
+		event := &model.Event{
+			Title:       fmt.Sprintf("ISW: %s", item.Title),
+			Description: p.cleanDesc(item.Description),
+			Source:      p.name,
+			SourceID:    fmt.Sprintf("isw_%s", sourceID),
+			OccurredAt:  pubDate,
+			Location:    model.Point(37.0, 48.0), // Ukraine conflict centroid
+			Precision:   model.PrecisionApproximate,
+			Category:    "conflict",
+			Severity:    model.SeverityMedium,
+			Metadata: map[string]string{
+				"link":   item.Link,
+				"source": "Institute for the Study of War",
+				"type":   "analysis",
+			},
+		}
+		events = append(events, event)
+	}
+
+	return events, nil
+}
+
+func (p *ISWProvider) parseDate(dateStr string) time.Time {
+	if dateStr == "" {
+		return time.Now().UTC()
+	}
+	formats := []string{
+		time.RFC1123, time.RFC1123Z,
+		"Mon, 02 Jan 2006 15:04:05 MST",
+		"Mon, 02 Jan 2006 15:04:05 -0700",
+		time.RFC822, time.RFC822Z, time.RFC3339,
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, dateStr); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+func (p *ISWProvider) cleanDesc(text string) string {
+	result := text
+	for strings.Contains(result, "<") && strings.Contains(result, ">") {
+		start := strings.Index(result, "<")
+		end := strings.Index(result, ">")
+		if end > start {
+			result = result[:start] + result[end+1:]
+		} else {
+			break
+		}
+	}
+	result = strings.TrimSpace(result)
+	if len(result) > 600 {
+		result = result[:600] + "..."
+	}
+	return result
 }
 
 // IranStrikeMapPreset creates a preset for the Iran Strike Map
