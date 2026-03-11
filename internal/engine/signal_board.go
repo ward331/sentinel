@@ -75,6 +75,11 @@ func (sb *SignalBoard) Start(ctx context.Context) {
 
 		log.Printf("[signal_board] calculator started")
 
+		// Run immediately on startup so signal board data is available right away
+		if _, err := sb.Calculate(); err != nil {
+			log.Printf("[signal_board] initial calculation error: %v", err)
+		}
+
 		for {
 			select {
 			case <-sb.ctx.Done():

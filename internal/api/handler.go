@@ -34,22 +34,24 @@ type Handler struct {
 	startTime      time.Time
 }
 
-// NewHandler creates a new API handler
+// NewHandler creates a new API handler.
+// Alert rules are loaded from SQLite so they survive restarts.
 func NewHandler(storage *storage.Storage, metrics *metrics.Metrics, healthRegistry *health.HealthRegistry) *Handler {
 	return &Handler{
 		storage:     storage,
 		stream:      NewStreamBroker(),
-		alertEngine: alert.NewRuleEngine(),
+		alertEngine: alert.NewRuleEngineWithStore(storage),
 		metrics:     metrics,
 		health:      healthRegistry,
 		startTime:   time.Now(),
 	}
 }
 
-// NewHandlerWithInfrastructure creates a new API handler with data infrastructure
+// NewHandlerWithInfrastructure creates a new API handler with data infrastructure.
+// Alert rules are loaded from SQLite so they survive restarts.
 func NewHandlerWithInfrastructure(
-	storage *storage.Storage, 
-	metrics *metrics.Metrics, 
+	storage *storage.Storage,
+	metrics *metrics.Metrics,
 	healthRegistry *health.HealthRegistry,
 	healthReporter *infrastructure.HealthReporter,
 	eventLog *infrastructure.NDJSONLog,
@@ -57,7 +59,7 @@ func NewHandlerWithInfrastructure(
 	return &Handler{
 		storage:        storage,
 		stream:         NewStreamBroker(),
-		alertEngine:    alert.NewRuleEngine(),
+		alertEngine:    alert.NewRuleEngineWithStore(storage),
 		metrics:        metrics,
 		health:         healthRegistry,
 		healthReporter: healthReporter,
@@ -464,10 +466,15 @@ func parseListFilter(r *http.Request) storage.ListFilter {
 		}
 	}
 
-	// truth_score_min and country are accepted but not yet wired to storage filters.
-	// They are parsed here for API completeness; storage integration in a later stage.
-	_ = r.URL.Query().Get("truth_score_min")
-	_ = r.URL.Query().Get("country")
+	if tsStr := r.URL.Query().Get("truth_score_min"); tsStr != "" {
+		if ts, err := strconv.Atoi(tsStr); err == nil && ts > 0 {
+			filter.TruthScoreMin = ts
+		}
+	}
+
+	if country := r.URL.Query().Get("country"); country != "" {
+		filter.Country = country
+	}
 
 	return filter
 }
@@ -761,6 +768,11 @@ func (h *Handler) Router() *mux.Router {
 
 	// Correlations
 	r.HandleFunc("/api/correlations", h.GetCorrelations).Methods("GET")
+
+	// Proximity alerts — "Near Me"
+	r.HandleFunc("/api/proximity/events", h.GetProximityEvents).Methods("GET")
+	r.HandleFunc("/api/proximity/config", h.GetProximityConfig).Methods("GET")
+	r.HandleFunc("/api/proximity/config", h.UpdateProximityConfig).Methods("POST")
 
 	// Metrics routes
 	r.HandleFunc("/api/metrics", h.GetMetrics).Methods("GET")

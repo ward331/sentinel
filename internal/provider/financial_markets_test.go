@@ -40,14 +40,14 @@ func TestFinancialMarketsProvider_VIXParsing(t *testing.T) {
 			"2. Symbol":      "VIX",
 		},
 		"Time Series (Daily)": map[string]interface{}{
-			"2026-03-10": map[string]string{
+			"2026-03-10": map[string]interface{}{
 				"1. open":   "32.50",
 				"2. high":   "35.20",
 				"3. low":    "31.80",
 				"4. close":  "34.75",
 				"5. volume": "0",
 			},
-			"2026-03-09": map[string]string{
+			"2026-03-09": map[string]interface{}{
 				"1. open":   "28.00",
 				"2. high":   "33.10",
 				"3. low":    "27.50",

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -15,10 +17,13 @@ import (
 	"syscall"
 	"time"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/openclaw/sentinel-backend/internal/api"
 	"github.com/openclaw/sentinel-backend/internal/config"
 	"github.com/openclaw/sentinel-backend/internal/engine"
 	"github.com/openclaw/sentinel-backend/internal/health"
+	"github.com/openclaw/sentinel-backend/internal/intel"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
 	"github.com/openclaw/sentinel-backend/internal/notify"
 	"github.com/openclaw/sentinel-backend/internal/poller"
@@ -37,7 +42,9 @@ var (
 	host       = flag.String("host", "localhost", "Host to bind to")
 	version    = flag.Bool("version", false, "Show version information")
 	wizard     = flag.Bool("wizard", false, "Run first-run setup wizard")
-	noFrontend = flag.Bool("no-frontend", false, "API only — do not serve embedded frontend")
+	noFrontend   = flag.Bool("no-frontend", false, "API only — do not serve embedded frontend")
+	exportConfig = flag.Bool("export-config", false, "Print loaded config as JSON (sensitive fields masked) and exit")
+	checkConfig  = flag.Bool("check-config", false, "Validate config and exit with code 0 (valid) or 1 (invalid)")
 )
 
 // Version is set during build via -ldflags.
@@ -70,6 +77,31 @@ func main() {
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// ── 1b. --export-config ─────────────────────────────────
+	if *exportConfig {
+		masked := maskSensitiveFields(cfg)
+		data, err := json.MarshalIndent(masked, "", "  ")
+		if err != nil {
+			log.Fatalf("Failed to marshal config: %v", err)
+		}
+		fmt.Println(string(data))
+		return
+	}
+
+	// ── 1c. --check-config ──────────────────────────────────
+	if *checkConfig {
+		problems := validateConfig(cfg)
+		if len(problems) == 0 {
+			fmt.Println("Config OK — all checks passed.")
+			os.Exit(0)
+		}
+		fmt.Printf("Config INVALID — %d problem(s):\n", len(problems))
+		for _, p := range problems {
+			fmt.Printf("  - %s\n", p)
+		}
+		os.Exit(1)
 	}
 
 	// ── 2. Wizard (first-run or --wizard) ───────────────────
@@ -171,6 +203,31 @@ func startServer(cfg *config.Config) error {
 	deadReckoning.Start(ctx)
 	defer deadReckoning.Stop()
 
+	// ── 3b. News Aggregator ─────────────────────────────────
+	newsAdapter := storage.NewNewsStoreAdapter(store)
+	newsAgg := intel.NewNewsAggregator(nil, newsAdapter)
+	newsAgg.Start(ctx)
+	defer newsAgg.Stop()
+
+	// ── 3c. Event Log Rotation (daily) ──────────────────────
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				deleted, err := store.RotateEventLog(30)
+				if err != nil {
+					log.Printf("Event log rotation error: %v", err)
+				} else if deleted > 0 {
+					log.Printf("Event log rotation: pruned %d events older than 30 days", deleted)
+				}
+			}
+		}
+	}()
+
 	// ── 4. Notification Dispatcher ──────────────────────────
 	notifyDispatcher := initializeNotifications(cfg)
 
@@ -247,6 +304,7 @@ func startServer(cfg *config.Config) error {
 		statusMark("signal-board", cfg.SignalBoard.Enabled),
 		statusMark("dead-reckoning", cfg.EntityTracking.Enabled),
 		statusMark("proximity", proxAlert != nil),
+		statusMark("news-agg", true),
 	}, " | ")
 
 	enabledChannels := notifyDispatcher.EnabledChannelNames()
@@ -441,4 +499,142 @@ func statusMark(name string, on bool) string {
 		return name + " ok"
 	}
 	return name + " off"
+}
+
+// ─── Config CLI helpers ─────────────────────────────────────────────────────
+
+// sensitiveFieldNames lists JSON field name substrings that should be masked.
+var sensitiveFieldNames = []string{
+	"token", "key", "secret", "password", "webhook_url", "encrypted",
+}
+
+// maskSensitiveFields returns a JSON-round-tripped copy of cfg with sensitive string fields replaced by "***".
+func maskSensitiveFields(cfg *config.Config) interface{} {
+	data, _ := json.Marshal(cfg)
+	var raw map[string]interface{}
+	_ = json.Unmarshal(data, &raw)
+	maskMap(raw)
+	return raw
+}
+
+// maskMap recursively walks a JSON map and masks sensitive string values.
+func maskMap(m map[string]interface{}) {
+	for k, v := range m {
+		lower := strings.ToLower(k)
+		switch val := v.(type) {
+		case string:
+			if val != "" && isSensitiveKey(lower) {
+				m[k] = "***"
+			}
+		case map[string]interface{}:
+			maskMap(val)
+		case []interface{}:
+			maskSlice(val)
+		}
+	}
+}
+
+// maskSlice recursively walks a JSON array and masks sensitive values in nested maps.
+func maskSlice(s []interface{}) {
+	for _, v := range s {
+		if m, ok := v.(map[string]interface{}); ok {
+			maskMap(m)
+		}
+	}
+}
+
+// isSensitiveKey checks whether a lowercase JSON key name looks sensitive.
+func isSensitiveKey(lower string) bool {
+	for _, sub := range sensitiveFieldNames {
+		if strings.Contains(lower, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateConfig checks required fields, paths, and DB connectivity.
+func validateConfig(cfg *config.Config) []string {
+	var problems []string
+
+	// Required: data directory
+	if cfg.DataDir == "" {
+		problems = append(problems, "data_dir is empty")
+	} else if info, err := os.Stat(cfg.DataDir); err != nil {
+		problems = append(problems, fmt.Sprintf("data_dir %q: %v", cfg.DataDir, err))
+	} else if !info.IsDir() {
+		problems = append(problems, fmt.Sprintf("data_dir %q is not a directory", cfg.DataDir))
+	}
+
+	// Server port sanity
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		problems = append(problems, fmt.Sprintf("server.port %d out of range 1-65535", cfg.Server.Port))
+	}
+
+	// TLS cert/key paths
+	if cfg.Server.TLSEnabled {
+		if cfg.Server.TLSCert == "" {
+			problems = append(problems, "tls_enabled but tls_cert is empty")
+		} else if _, err := os.Stat(cfg.Server.TLSCert); err != nil {
+			problems = append(problems, fmt.Sprintf("tls_cert %q: %v", cfg.Server.TLSCert, err))
+		}
+		if cfg.Server.TLSKey == "" {
+			problems = append(problems, "tls_enabled but tls_key is empty")
+		} else if _, err := os.Stat(cfg.Server.TLSKey); err != nil {
+			problems = append(problems, fmt.Sprintf("tls_key %q: %v", cfg.Server.TLSKey, err))
+		}
+	}
+
+	// Notification channels: warn if enabled but missing required fields
+	if cfg.Telegram.Enabled {
+		if cfg.Telegram.BotToken == "" {
+			problems = append(problems, "telegram enabled but bot_token is empty")
+		}
+		if cfg.Telegram.ChatID == "" {
+			problems = append(problems, "telegram enabled but chat_id is empty")
+		}
+	}
+	if cfg.Slack.Enabled && cfg.Slack.WebhookURL == "" {
+		problems = append(problems, "slack enabled but webhook_url is empty")
+	}
+	if cfg.Discord.Enabled && cfg.Discord.WebhookURL == "" {
+		problems = append(problems, "discord enabled but webhook_url is empty")
+	}
+	if cfg.Ntfy.Enabled && cfg.Ntfy.Topic == "" {
+		problems = append(problems, "ntfy enabled but topic is empty")
+	}
+	if cfg.Pushover.Enabled {
+		if cfg.Pushover.AppToken == "" {
+			problems = append(problems, "pushover enabled but app_token is empty")
+		}
+		if cfg.Pushover.UserKey == "" {
+			problems = append(problems, "pushover enabled but user_key is empty")
+		}
+	}
+
+	// Location sanity
+	if cfg.Location.Set {
+		if cfg.Location.Lat < -90 || cfg.Location.Lat > 90 {
+			problems = append(problems, fmt.Sprintf("location.lat %.4f out of range -90..90", cfg.Location.Lat))
+		}
+		if cfg.Location.Lon < -180 || cfg.Location.Lon > 180 {
+			problems = append(problems, fmt.Sprintf("location.lon %.4f out of range -180..180", cfg.Location.Lon))
+		}
+	}
+
+	// DB connectivity test
+	if cfg.DataDir != "" {
+		dbPath := filepath.Join(cfg.DataDir, "sentinel.db")
+		db, err := sql.Open("sqlite", dbPath)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("database open failed: %v", err))
+		} else {
+			if err := db.Ping(); err != nil {
+				problems = append(problems, fmt.Sprintf("database ping failed: %v", err))
+			}
+			db.Close()
+		}
+	}
+
+	return problems
 }

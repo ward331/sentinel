@@ -78,6 +78,9 @@ func (e *DeadReckoningEngine) Start(ctx context.Context) {
 		log.Printf("[dead_reckoning] engine started (maxAge=%dm, stale=%dm, fade=%.0f%%/min)",
 			e.maxAgeMins, e.staleMins, e.fadePerMin*100)
 
+		// Run immediately on startup so projections are available right away
+		e.ProjectAll()
+
 		for {
 			select {
 			case <-e.ctx.Done():

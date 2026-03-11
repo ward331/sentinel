@@ -487,11 +487,16 @@ func SaveConfig(config *Config, configPath string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 	
-	// Write to file
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Atomic write: write to temp file, then rename
+	tmpPath := configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp config file: %w", err)
 	}
-	
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		os.Remove(tmpPath) // clean up on rename failure
+		return fmt.Errorf("failed to rename temp config file: %w", err)
+	}
+
 	return nil
 }
 

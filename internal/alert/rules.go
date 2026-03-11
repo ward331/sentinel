@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/openclaw/sentinel-backend/internal/model"
@@ -36,53 +38,130 @@ type Action struct {
 	Config map[string]string `json:"config"`
 }
 
+// RuleStore is the interface the rule engine needs for persistence.
+// Implemented by *storage.Storage.
+type RuleStore interface {
+	GetAlertRules() ([]model.AlertRule, error)
+	GetAlertRule(id int64) (*model.AlertRule, error)
+	CreateAlertRule(rule *model.AlertRule) error
+	UpdateAlertRule(id int64, rule *model.AlertRule) error
+	DeleteAlertRule(id int64) error
+}
+
 // RuleEngine evaluates events against rules
 type RuleEngine struct {
 	rules []Rule
+	store RuleStore // nil = legacy in-memory only
 }
 
-// NewRuleEngine creates a new rule engine
+// NewRuleEngine creates a new rule engine with hardcoded defaults (no persistence).
 func NewRuleEngine() *RuleEngine {
 	return &RuleEngine{
-		rules: []Rule{
-			// Default rules
-			{
-				ID:          "major-earthquake",
-				Name:        "Major Earthquake Alert",
-				Description: "Alert for earthquakes magnitude 6.0 or higher",
-				Enabled:     true,
-				Conditions: []Condition{
-					{Field: "category", Operator: "equals", Value: "earthquake"},
-					{Field: "magnitude", Operator: "gte", Value: 6.0},
-				},
-				Actions: []Action{
-					{Type: "log", Config: map[string]string{"level": "warn"}},
-				},
+		rules: defaultRules(),
+	}
+}
+
+// NewRuleEngineWithStore creates a rule engine backed by SQLite.
+// It loads existing rules from the database. If the DB is empty it seeds
+// the default rules and persists them.
+func NewRuleEngineWithStore(store RuleStore) *RuleEngine {
+	re := &RuleEngine{store: store}
+	if err := re.loadFromDB(); err != nil {
+		log.Printf("[alert] failed to load rules from DB, falling back to defaults: %v", err)
+		re.rules = defaultRules()
+		return re
+	}
+	// Seed defaults if DB was empty
+	if len(re.rules) == 0 {
+		log.Println("[alert] no rules in DB, seeding defaults")
+		for _, r := range defaultRules() {
+			re.rules = append(re.rules, r)
+			if err := re.persistRule(&r); err != nil {
+				log.Printf("[alert] failed to seed rule %q: %v", r.Name, err)
+			}
+		}
+		// Reload so IDs are correct
+		_ = re.loadFromDB()
+	}
+	log.Printf("[alert] loaded %d alert rules from DB", len(re.rules))
+	return re
+}
+
+// loadFromDB reads all rules from storage and converts them to alert.Rule.
+func (re *RuleEngine) loadFromDB() error {
+	if re.store == nil {
+		return nil
+	}
+	dbRules, err := re.store.GetAlertRules()
+	if err != nil {
+		return err
+	}
+	rules := make([]Rule, 0, len(dbRules))
+	for _, dr := range dbRules {
+		r, err := modelToRule(&dr)
+		if err != nil {
+			log.Printf("[alert] skipping rule %d (%s): %v", dr.ID, dr.Name, err)
+			continue
+		}
+		rules = append(rules, *r)
+	}
+	re.rules = rules
+	return nil
+}
+
+// persistRule converts an alert.Rule to model.AlertRule and inserts it.
+// On success the rule's ID is updated to the DB-assigned value.
+func (re *RuleEngine) persistRule(r *Rule) error {
+	mr, err := ruleToModel(r)
+	if err != nil {
+		return err
+	}
+	if err := re.store.CreateAlertRule(mr); err != nil {
+		return err
+	}
+	r.ID = strconv.FormatInt(mr.ID, 10)
+	return nil
+}
+
+// defaultRules returns the hardcoded seed rules.
+func defaultRules() []Rule {
+	return []Rule{
+		{
+			ID:          "major-earthquake",
+			Name:        "Major Earthquake Alert",
+			Description: "Alert for earthquakes magnitude 6.0 or higher",
+			Enabled:     true,
+			Conditions: []Condition{
+				{Field: "category", Operator: "equals", Value: "earthquake"},
+				{Field: "magnitude", Operator: "gte", Value: 6.0},
 			},
-			{
-				ID:          "critical-severity",
-				Name:        "Critical Severity Alert",
-				Description: "Alert for events with critical severity",
-				Enabled:     true,
-				Conditions: []Condition{
-					{Field: "severity", Operator: "equals", Value: "critical"},
-				},
-				Actions: []Action{
-					{Type: "log", Config: map[string]string{"level": "error"}},
-				},
+			Actions: []Action{
+				{Type: "log", Config: map[string]string{"level": "warn"}},
 			},
-			{
-				ID:          "usgs-major",
-				Name:        "USGS Major Event",
-				Description: "Alert for major USGS events (magnitude 5.0+)",
-				Enabled:     true,
-				Conditions: []Condition{
-					{Field: "source", Operator: "equals", Value: "usgs"},
-					{Field: "magnitude", Operator: "gte", Value: 5.0},
-				},
-				Actions: []Action{
-					{Type: "log", Config: map[string]string{"level": "info"}},
-				},
+		},
+		{
+			ID:          "critical-severity",
+			Name:        "Critical Severity Alert",
+			Description: "Alert for events with critical severity",
+			Enabled:     true,
+			Conditions: []Condition{
+				{Field: "severity", Operator: "equals", Value: "critical"},
+			},
+			Actions: []Action{
+				{Type: "log", Config: map[string]string{"level": "error"}},
+			},
+		},
+		{
+			ID:          "usgs-major",
+			Name:        "USGS Major Event",
+			Description: "Alert for major USGS events (magnitude 5.0+)",
+			Enabled:     true,
+			Conditions: []Condition{
+				{Field: "source", Operator: "equals", Value: "usgs"},
+				{Field: "magnitude", Operator: "gte", Value: 5.0},
+			},
+			Actions: []Action{
+				{Type: "log", Config: map[string]string{"level": "info"}},
 			},
 		},
 	}
@@ -500,25 +579,44 @@ func (e *RuleEngine) GetRules() []Rule {
 	return e.rules
 }
 
-// AddRule adds a new rule
+// AddRule adds a new rule, persisting to DB if a store is configured.
 func (e *RuleEngine) AddRule(rule Rule) {
-	if rule.ID == "" {
-		rule.ID = fmt.Sprintf("rule-%d", len(e.rules)+1)
-	}
 	if rule.CreatedAt.IsZero() {
 		rule.CreatedAt = time.Now()
 	}
 	rule.UpdatedAt = time.Now()
+
+	if e.store != nil {
+		if err := e.persistRule(&rule); err != nil {
+			log.Printf("[alert] failed to persist new rule %q: %v", rule.Name, err)
+		}
+	} else if rule.ID == "" {
+		rule.ID = fmt.Sprintf("rule-%d", len(e.rules)+1)
+	}
+
 	e.rules = append(e.rules, rule)
 }
 
-// UpdateRule updates an existing rule
+// UpdateRule updates an existing rule, persisting to DB if a store is configured.
 func (e *RuleEngine) UpdateRule(id string, updated Rule) bool {
 	for i, rule := range e.rules {
 		if rule.ID == id {
 			updated.ID = id
 			updated.CreatedAt = rule.CreatedAt
 			updated.UpdatedAt = time.Now()
+
+			if e.store != nil {
+				dbID, err := strconv.ParseInt(id, 10, 64)
+				if err == nil {
+					mr, convErr := ruleToModel(&updated)
+					if convErr == nil {
+						if dbErr := e.store.UpdateAlertRule(dbID, mr); dbErr != nil {
+							log.Printf("[alert] failed to persist update for rule %s: %v", id, dbErr)
+						}
+					}
+				}
+			}
+
 			e.rules[i] = updated
 			return true
 		}
@@ -526,15 +624,79 @@ func (e *RuleEngine) UpdateRule(id string, updated Rule) bool {
 	return false
 }
 
-// DeleteRule removes a rule
+// DeleteRule removes a rule, persisting to DB if a store is configured.
 func (e *RuleEngine) DeleteRule(id string) bool {
 	for i, rule := range e.rules {
 		if rule.ID == id {
+			if e.store != nil {
+				dbID, err := strconv.ParseInt(id, 10, 64)
+				if err == nil {
+					if dbErr := e.store.DeleteAlertRule(dbID); dbErr != nil {
+						log.Printf("[alert] failed to delete rule %s from DB: %v", id, dbErr)
+					}
+				}
+			}
 			e.rules = append(e.rules[:i], e.rules[i+1:]...)
 			return true
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Conversion helpers between alert.Rule and model.AlertRule
+// ---------------------------------------------------------------------------
+
+// ruleToModel converts an alert.Rule to a model.AlertRule for DB storage.
+func ruleToModel(r *Rule) (*model.AlertRule, error) {
+	condJSON, err := json.Marshal(r.Conditions)
+	if err != nil {
+		return nil, fmt.Errorf("marshal conditions: %w", err)
+	}
+	actJSON, err := json.Marshal(r.Actions)
+	if err != nil {
+		return nil, fmt.Errorf("marshal actions: %w", err)
+	}
+	mr := &model.AlertRule{
+		Name:       r.Name,
+		Conditions: json.RawMessage(condJSON),
+		Actions:    json.RawMessage(actJSON),
+		Enabled:    r.Enabled,
+		CreatedAt:  r.CreatedAt.UTC().Format(time.RFC3339),
+	}
+	if r.ID != "" {
+		if dbID, err := strconv.ParseInt(r.ID, 10, 64); err == nil {
+			mr.ID = dbID
+		}
+	}
+	return mr, nil
+}
+
+// modelToRule converts a model.AlertRule (DB row) to an alert.Rule.
+func modelToRule(mr *model.AlertRule) (*Rule, error) {
+	r := &Rule{
+		ID:      strconv.FormatInt(mr.ID, 10),
+		Name:    mr.Name,
+		Enabled: mr.Enabled,
+	}
+	if mr.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, mr.CreatedAt); err == nil {
+			r.CreatedAt = t
+		}
+	}
+	r.UpdatedAt = r.CreatedAt
+
+	if len(mr.Conditions) > 0 {
+		if err := json.Unmarshal(mr.Conditions, &r.Conditions); err != nil {
+			return nil, fmt.Errorf("unmarshal conditions: %w", err)
+		}
+	}
+	if len(mr.Actions) > 0 {
+		if err := json.Unmarshal(mr.Actions, &r.Actions); err != nil {
+			return nil, fmt.Errorf("unmarshal actions: %w", err)
+		}
+	}
+	return r, nil
 }
 
 // formatLocation formats a Location struct into a readable string

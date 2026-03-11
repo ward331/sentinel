@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -92,7 +93,7 @@ func TestSignalBoard_MilitaryConflict(t *testing.T) {
 	// Insert a critical conflict event
 	e := newTestModelEvent("acled", "conflict", 40.0, -74.0, now.Add(-1*time.Hour))
 	e.Severity = "critical"
-	if err := s.StoreEvent(nil, e); err != nil {
+	if err := s.StoreEvent(context.Background(), e); err != nil {
 		t.Fatalf("store event: %v", err)
 	}
 
@@ -114,7 +115,7 @@ func TestSignalBoard_NaturalEarthquake(t *testing.T) {
 	// Insert a M7.5 earthquake
 	e := newTestModelEvent("usgs", "earthquake", 35.0, 139.0, now.Add(-2*time.Hour))
 	e.Magnitude = 7.5
-	if err := s.StoreEvent(nil, e); err != nil {
+	if err := s.StoreEvent(context.Background(), e); err != nil {
 		t.Fatalf("store event: %v", err)
 	}
 
@@ -137,7 +138,7 @@ func TestSignalBoard_HealthWHO(t *testing.T) {
 	e := newTestModelEvent("who", "health", 0.0, 0.0, now.Add(-1*24*time.Hour))
 	e.Severity = "warning"
 	e.Location.Coordinates = []float64{0.01, 0.01} // avoid 0,0 filter
-	if err := s.StoreEvent(nil, e); err != nil {
+	if err := s.StoreEvent(context.Background(), e); err != nil {
 		t.Fatalf("store event: %v", err)
 	}
 
@@ -161,7 +162,7 @@ func TestSignalBoard_FinancialVIX(t *testing.T) {
 	e.Metadata = map[string]string{
 		"vix": "40.5",
 	}
-	if err := s.StoreEvent(nil, e); err != nil {
+	if err := s.StoreEvent(context.Background(), e); err != nil {
 		t.Fatalf("store event: %v", err)
 	}
 
@@ -182,7 +183,7 @@ func TestSignalBoard_CyberCISA(t *testing.T) {
 	now := time.Now().UTC()
 	// Insert a CISA KEV event
 	e := newTestModelEvent("cisa_kev", "cyber", 38.9, -77.0, now.Add(-6*time.Hour))
-	if err := s.StoreEvent(nil, e); err != nil {
+	if err := s.StoreEvent(context.Background(), e); err != nil {
 		t.Fatalf("store event: %v", err)
 	}
 
@@ -205,7 +206,7 @@ func TestSignalBoard_ScoreCapping(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		e := newTestModelEvent("acled", "conflict", 40.0, -74.0, now.Add(-time.Duration(i)*time.Minute))
 		e.Severity = "critical"
-		if err := s.StoreEvent(nil, e); err != nil {
+		if err := s.StoreEvent(context.Background(), e); err != nil {
 			t.Fatalf("store event %d: %v", i, err)
 		}
 	}

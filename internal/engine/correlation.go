@@ -72,6 +72,11 @@ func (e *CorrelationEngine) Start(ctx context.Context) {
 		log.Printf("[correlation] engine started (window=%dm, minSources=%d, radius=%.0fkm)",
 			e.windowMinutes, e.minSources, e.radiusKm)
 
+		// Run immediately on startup so data is available right away
+		if _, err := e.Evaluate(); err != nil {
+			log.Printf("[correlation] initial evaluate error: %v", err)
+		}
+
 		for {
 			select {
 			case <-e.ctx.Done():

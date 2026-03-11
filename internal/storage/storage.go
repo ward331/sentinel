@@ -435,6 +435,8 @@ type ListFilter struct {
 	ExcludeSource   string // Comma-separated sources to exclude
 	MinMagnitude    float64
 	MaxMagnitude    float64
+	TruthScoreMin   int // Minimum truth_score (0 means no filter)
+	Country         string // Filter by country_code in metadata_json
 	StartTime       time.Time
 	EndTime         time.Time
 	BBox            []float64 // [min_lon, min_lat, max_lon, max_lat]
@@ -513,6 +515,16 @@ func buildWhereClause(filter ListFilter) (string, []interface{}) {
 			)
 		`)
 		args = append(args, filter.BBox[2], filter.BBox[0], filter.BBox[3], filter.BBox[1])
+	}
+
+	if filter.TruthScoreMin > 0 {
+		conditions = append(conditions, "e.truth_score >= ?")
+		args = append(args, filter.TruthScoreMin)
+	}
+
+	if filter.Country != "" {
+		conditions = append(conditions, "json_extract(e.metadata_json, '$.country_code') = ?")
+		args = append(args, filter.Country)
 	}
 
 	if len(conditions) == 0 {
@@ -614,6 +626,16 @@ func buildFTSWhereClause(filter ListFilter) (string, []interface{}) {
 			)
 		`)
 		args = append(args, filter.BBox[2], filter.BBox[0], filter.BBox[3], filter.BBox[1])
+	}
+
+	if filter.TruthScoreMin > 0 {
+		conditions = append(conditions, "e.truth_score >= ?")
+		args = append(args, filter.TruthScoreMin)
+	}
+
+	if filter.Country != "" {
+		conditions = append(conditions, "json_extract(e.metadata_json, '$.country_code') = ?")
+		args = append(args, filter.Country)
 	}
 
 	if len(conditions) == 0 {

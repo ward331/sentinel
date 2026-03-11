@@ -80,6 +80,11 @@ func (t *TruthScoreCalculator) Start(ctx context.Context) {
 
 		log.Printf("[truth] score calculator started (radius=%.0fkm, window=%v)", t.radiusKm, t.window)
 
+		// Run immediately on startup so scores are available right away
+		if err := t.ScoreRecentEvents(); err != nil {
+			log.Printf("[truth] initial scoring error: %v", err)
+		}
+
 		for {
 			select {
 			case <-t.ctx.Done():

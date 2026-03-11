@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -362,6 +363,31 @@ func (s *Storage) InsertV3TruthConfirmation(primaryID, confirmingID int64, confi
 // Alert rules
 // ---------------------------------------------------------------------------
 
+// GetAlertRule returns a single alert rule by ID.
+func (s *Storage) GetAlertRule(id int64) (*model.AlertRule, error) {
+	var r model.AlertRule
+	var condJSON, actJSON sql.NullString
+	var enabled int
+	err := s.db.QueryRow(`
+		SELECT id, name, conditions_json, actions_json, enabled, created_at
+		FROM alert_rules WHERE id = ?
+	`, id).Scan(&r.ID, &r.Name, &condJSON, &actJSON, &enabled, &r.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	r.Enabled = enabled != 0
+	if condJSON.Valid {
+		r.Conditions = json.RawMessage(condJSON.String)
+	}
+	if actJSON.Valid {
+		r.Actions = json.RawMessage(actJSON.String)
+	}
+	return &r, nil
+}
+
 // GetAlertRules returns all alert rules.
 func (s *Storage) GetAlertRules() ([]model.AlertRule, error) {
 	rows, err := s.db.Query(`
@@ -457,6 +483,16 @@ func (s *Storage) InsertNewsItem(item *model.NewsItem) error {
 	}
 	item.ID, _ = result.LastInsertId()
 	return nil
+}
+
+// HasNewsURL checks if a news item with the given URL already exists.
+func (s *Storage) HasNewsURL(ctx context.Context, url string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM news_items WHERE url = ?", url).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // GetRecentNews returns the most recent news items.
@@ -611,6 +647,24 @@ func (s *Storage) GetLatestBriefing() (string, string, error) {
 		return "", "", err
 	}
 	return content, generatedAt, nil
+}
+
+// ---------------------------------------------------------------------------
+// Event log rotation
+// ---------------------------------------------------------------------------
+
+// RotateEventLog deletes events older than the given number of days and returns
+// the count of removed rows.
+func (s *Storage) RotateEventLog(retentionDays int) (int64, error) {
+	if retentionDays <= 0 {
+		retentionDays = 30
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays).Format(time.RFC3339)
+	result, err := s.db.Exec("DELETE FROM events WHERE ingested_at < ?", cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("RotateEventLog: %w", err)
+	}
+	return result.RowsAffected()
 }
 
 // ---------------------------------------------------------------------------

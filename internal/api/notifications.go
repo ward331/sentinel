@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/openclaw/sentinel-backend/internal/config"
 )
 
 // NotificationConfigResponse represents notification channel settings.
@@ -70,6 +72,14 @@ func (h *Handler) GetNotificationConfig(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) UpdateNotificationConfig(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
+	if h.config == nil {
+		http.Error(w, `{"error":"config not available"}`, http.StatusServiceUnavailable)
+		if h.metrics != nil {
+			h.metrics.RecordAPIError("/api/notifications/config")
+		}
+		return
+	}
+
 	var update map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -79,17 +89,135 @@ func (h *Handler) UpdateNotificationConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Apply updates to notification channels in config (simplified)
-	// In a full implementation this would update h.config and save.
+	// Apply updates per channel
+	if tg, ok := update["telegram"].(map[string]interface{}); ok {
+		applyChannelUpdate(&h.config.Telegram.Enabled, &h.config.Telegram.MinSeverity, tg)
+		if v, ok := tg["bot_token"].(string); ok {
+			h.config.Telegram.BotToken = v
+		}
+		if v, ok := tg["chat_id"].(string); ok {
+			h.config.Telegram.ChatID = v
+		}
+		if v, ok := tg["digest_mode"].(bool); ok {
+			h.config.Telegram.DigestMode = v
+		}
+		if v, ok := tg["digest_interval_minutes"].(float64); ok {
+			h.config.Telegram.DigestIntervalMinutes = int(v)
+		}
+	}
+
+	if sl, ok := update["slack"].(map[string]interface{}); ok {
+		applyChannelUpdate(&h.config.Slack.Enabled, &h.config.Slack.MinSeverity, sl)
+		if v, ok := sl["webhook_url"].(string); ok {
+			h.config.Slack.WebhookURL = v
+		}
+		if v, ok := sl["channel"].(string); ok {
+			h.config.Slack.Channel = v
+		}
+	}
+
+	if dc, ok := update["discord"].(map[string]interface{}); ok {
+		applyChannelUpdate(&h.config.Discord.Enabled, &h.config.Discord.MinSeverity, dc)
+		if v, ok := dc["webhook_url"].(string); ok {
+			h.config.Discord.WebhookURL = v
+		}
+	}
+
+	if em, ok := update["email"].(map[string]interface{}); ok {
+		applyChannelUpdate(&h.config.Email.Enabled, &h.config.Email.MinSeverity, em)
+		if v, ok := em["method"].(string); ok {
+			h.config.Email.Method = v
+		}
+		if v, ok := em["smtp_host"].(string); ok {
+			h.config.Email.SMTPHost = v
+		}
+		if v, ok := em["smtp_port"].(float64); ok {
+			h.config.Email.SMTPPort = int(v)
+		}
+		if v, ok := em["smtp_tls"].(string); ok {
+			h.config.Email.SMTPTLS = v
+		}
+		if v, ok := em["username"].(string); ok {
+			h.config.Email.Username = v
+		}
+		if v, ok := em["from_address"].(string); ok {
+			h.config.Email.FromAddress = v
+		}
+		if v, ok := em["to_addresses"].([]interface{}); ok {
+			addrs := make([]string, 0, len(v))
+			for _, a := range v {
+				if s, ok := a.(string); ok {
+					addrs = append(addrs, s)
+				}
+			}
+			h.config.Email.ToAddresses = addrs
+		}
+		if v, ok := em["gmail_client_id"].(string); ok {
+			h.config.Email.GmailClientID = v
+		}
+		if v, ok := em["gmail_client_secret"].(string); ok {
+			h.config.Email.GmailClientSecret = v
+		}
+		if v, ok := em["gmail_refresh_token"].(string); ok {
+			h.config.Email.GmailRefreshToken = v
+		}
+		if v, ok := em["mailgun_domain"].(string); ok {
+			h.config.Email.MailgunDomain = v
+		}
+		// Note: password_encrypted, sendgrid_key_encrypted, mailgun_key_encrypted
+		// are NOT accepted here — they must stay as-is to preserve encryption.
+	}
+
+	if nt, ok := update["ntfy"].(map[string]interface{}); ok {
+		applyChannelUpdate(&h.config.Ntfy.Enabled, &h.config.Ntfy.MinSeverity, nt)
+		if v, ok := nt["server"].(string); ok {
+			h.config.Ntfy.Server = v
+		}
+		if v, ok := nt["topic"].(string); ok {
+			h.config.Ntfy.Topic = v
+		}
+	}
+
+	if po, ok := update["pushover"].(map[string]interface{}); ok {
+		if v, ok := po["enabled"].(bool); ok {
+			h.config.Pushover.Enabled = v
+		}
+		if v, ok := po["app_token"].(string); ok {
+			h.config.Pushover.AppToken = v
+		}
+		if v, ok := po["user_key"].(string); ok {
+			h.config.Pushover.UserKey = v
+		}
+	}
+
+	// Persist to disk
+	if err := config.SaveConfig(h.config, ""); err != nil {
+		log.Printf("[api] failed to save notification config: %v", err)
+		http.Error(w, `{"error":"failed to save config to disk"}`, http.StatusInternalServerError)
+		if h.metrics != nil {
+			h.metrics.RecordAPIError("/api/notifications/config")
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
-		"message": "Notification config updated",
+		"message": "Notification config updated and saved",
 	})
 
 	if h.metrics != nil {
 		h.metrics.RecordAPIRequest("/api/notifications/config", time.Since(startTime))
+	}
+}
+
+// applyChannelUpdate sets the enabled and min_severity fields common to most channels.
+func applyChannelUpdate(enabled *bool, minSeverity *string, data map[string]interface{}) {
+	if v, ok := data["enabled"].(bool); ok {
+		*enabled = v
+	}
+	if v, ok := data["min_severity"].(string); ok {
+		*minSeverity = v
 	}
 }
 

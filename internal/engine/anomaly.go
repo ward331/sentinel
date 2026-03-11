@@ -67,6 +67,11 @@ func (d *AnomalyDetector) Start(ctx context.Context) {
 		log.Printf("[anomaly] detector started (spike=%.1fx, resolve=%.1fx, window=%dh)",
 			d.spikeThreshold, d.resolveAt, d.windowHours)
 
+		// Run immediately on startup so anomalies are detected right away
+		if _, err := d.Detect(); err != nil {
+			log.Printf("[anomaly] initial detection error: %v", err)
+		}
+
 		for {
 			select {
 			case <-d.ctx.Done():

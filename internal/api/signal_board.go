@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 )
@@ -20,15 +21,26 @@ type SignalBoardResponse struct {
 func (h *Handler) GetSignalBoard(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
-	// Return placeholder signal board data.
-	// The real engine.SignalBoard.Calculate() is a stub; we return sensible defaults.
-	response := SignalBoardResponse{
-		Military:     1,
-		Cyber:        2,
-		Financial:    1,
-		Natural:      1,
-		Health:       0,
-		CalculatedAt: time.Now().UTC(),
+	// Read the latest signal board snapshot from the database.
+	row, err := h.storage.GetLatestSignalBoard(r.Context())
+	var response SignalBoardResponse
+	if err != nil || row == nil {
+		if err != nil {
+			log.Printf("[api] signal-board query error: %v", err)
+		}
+		// Fall back to zeroed response if no data yet
+		response = SignalBoardResponse{
+			CalculatedAt: time.Now().UTC(),
+		}
+	} else {
+		response = SignalBoardResponse{
+			Military:     row.Military,
+			Cyber:        row.Cyber,
+			Financial:    row.Financial,
+			Natural:      row.Natural,
+			Health:       row.Health,
+			CalculatedAt: row.CalculatedAt,
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
