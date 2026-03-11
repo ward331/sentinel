@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#00d4ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="SENTINEL — Real-time global intelligence monitoring">
+  <link rel="manifest" href="manifest.json">
+  <title>SENTINEL</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Leaflet popup dark theme override -->
+  <style>
+    .leaflet-popup-content-wrapper { background: #141428 !important; color: #e0e0e0 !important; border: 1px solid #1e1e3a !important; border-radius: 8px !important; }
+    .leaflet-popup-tip { background: #141428 !important; }
+    .leaflet-popup-close-button { color: #8888aa !important; }
+    .leaflet-popup-close-button:hover { color: #e0e0e0 !important; }
+    .leaflet-control-zoom a { background: #141428 !important; color: #e0e0e0 !important; border-color: #1e1e3a !important; }
+    .leaflet-control-zoom a:hover { background: #1a1a36 !important; }
+    .leaflet-control-attribution { background: rgba(10,10,20,0.7) !important; color: #555577 !important; font-size: 9px !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="top-bar__logo">SENTINEL</div>
+      <div class="top-bar__status">
+        <div class="status-dot status-dot--connecting" id="status-dot"></div>
+        <span id="status-label">CONNECTING</span>
+      </div>
+    </header>
+
+    <!-- Main Area (sidebar + view) -->
+    <div class="main-area">
+      <!-- Desktop Sidebar -->
+      <nav class="sidebar" aria-label="Main navigation">
+        <button class="sidebar__item" data-route="#/signal-board" onclick="App.navigate('#/signal-board')">
+          <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+          Signal Board
+        </button>
+        <button class="sidebar__item" data-route="#/feed" onclick="App.navigate('#/feed')">
+          <svg viewBox="0 0 24 24"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
+          Feed
+        </button>
+        <button class="sidebar__item" data-route="#/map" onclick="App.navigate('#/map')">
+          <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          Map
+        </button>
+        <div class="sidebar__divider"></div>
+        <button class="sidebar__item" data-route="#/financial" onclick="App.navigate('#/financial')">
+          <svg viewBox="0 0 24 24"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
+          Financial
+        </button>
+        <button class="sidebar__item" data-route="#/entity" onclick="App.navigate('#/entity')">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          Entity Search
+        </button>
+        <div class="sidebar__divider"></div>
+        <button class="sidebar__item" data-route="#/settings" onclick="App.navigate('#/settings')">
+          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          Settings
+        </button>
+      </nav>
+
+      <!-- View Container -->
+      <main class="view-container" id="view-container">
+        <div class="loading">Initializing SENTINEL</div>
+      </main>
+    </div>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <button class="bottom-nav__item" data-route="#/signal-board" onclick="App.navigate('#/signal-board')" aria-label="Signal Board">
+        <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+        <span>Signals</span>
+      </button>
+      <button class="bottom-nav__item" data-route="#/feed" onclick="App.navigate('#/feed')" aria-label="Event Feed">
+        <svg viewBox="0 0 24 24"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
+        <span>Feed</span>
+      </button>
+      <button class="bottom-nav__item" data-route="#/map" onclick="App.navigate('#/map')" aria-label="Map">
+        <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        <span>Map</span>
+      </button>
+      <button class="bottom-nav__item" data-route="#/financial" onclick="App.navigate('#/financial')" aria-label="Financial">
+        <svg viewBox="0 0 24 24"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
+        <span>Finance</span>
+      </button>
+      <button class="bottom-nav__item" data-route="#/settings" onclick="App.navigate('#/settings')" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- Timeline Bar (shown when map timeline is active) -->
+    <div id="timeline-bar" class="timeline-bar"></div>
+
+    <!-- Brief Me FAB -->
+    <button class="btn--fab" onclick="App.briefMe()" aria-label="Brief Me" title="Get intelligence briefing">B</button>
+
+    <!-- Brief Me Modal -->
+    <div id="briefme-modal" class="briefme-modal" onclick="if(event.target===this)App.closeBriefMe()">
+      <div class="briefme-modal__content">
+        <div class="briefme-modal__header">
+          <h3 style="font-size:16px;color:var(--accent)">Intelligence Briefing</h3>
+          <button class="briefme-modal__close" onclick="App.closeBriefMe()">&times;</button>
+        </div>
+        <div id="briefme-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts (order matters: utils first, then components, then app last) -->
+  <script src="js/utils.js"></script>
+  <script src="js/signal-board.js"></script>
+  <script src="js/feed.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/financial.js"></script>
+  <script src="js/entity.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
