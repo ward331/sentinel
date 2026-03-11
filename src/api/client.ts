@@ -82,6 +82,14 @@ export async function createAlertRule(rule: Partial<AlertRule>): Promise<AlertRu
   return api('/api/alerts/rules', { method: 'POST', body: JSON.stringify(rule) })
 }
 
+export async function fetchServerConfig(): Promise<any> {
+  return api('/api/config')
+}
+
+export async function updateServerConfig(updates: Record<string, any>): Promise<any> {
+  return api('/api/config', { method: 'POST', body: JSON.stringify(updates) })
+}
+
 export function sseUrl(): string {
   return `${baseUrl()}/api/events/stream`
 }

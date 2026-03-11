@@ -1,6 +1,6 @@
 import { Shield, Settings, Activity, AlertTriangle, Eye } from 'lucide-react'
 
-export type View = 'map' | 'health' | 'alerts'
+export type View = 'map' | 'health' | 'alerts' | 'settings'
 
 interface Props {
   view: View
@@ -40,10 +40,10 @@ export function Header({ view, onViewChange, onOpenSettings, connected, eventCou
           <span className="text-xs text-gray-500">{eventCount}</span>
         </div>
         <button
-          onClick={onOpenSettings}
-          className="p-1.5 rounded hover:bg-gray-800 transition-colors"
+          onClick={() => onOpenSettings()}
+          className={`p-1.5 rounded transition-colors ${view === 'settings' ? 'bg-gray-700 text-emerald-400' : 'hover:bg-gray-800 text-gray-400'}`}
         >
-          <Settings className="w-4 h-4 text-gray-400" />
+          <Settings className="w-4 h-4" />
         </button>
       </div>
     </header>

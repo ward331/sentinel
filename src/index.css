@@ -6,10 +6,24 @@
   }
 }
 
-.leaflet-container {
-  background: #0a0a0f;
-  height: 100%;
-  width: 100%;
+/* Leaflet overrides — must be unlayered to beat Tailwind preflight */
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: none !important;
+  border-width: 0 !important;
+}
+
+.leaflet-container svg {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.leaflet-container * {
+  box-sizing: content-box !important;
 }
 
 .leaflet-popup-content-wrapper {
@@ -18,41 +32,11 @@
   border: 1px solid #333;
   border-radius: 8px;
 }
+.leaflet-popup-tip { background: #1a1a2e; }
+.leaflet-popup-content { margin: 12px; }
+.leaflet-control-zoom a { background: #1a1a2e !important; color: #e5e5e5 !important; border-color: #333 !important; }
+.leaflet-control-attribution { background: rgba(10,10,15,0.8) !important; color: #666 !important; }
 
-.leaflet-popup-tip {
-  background: #1a1a2e;
-}
-
-.leaflet-popup-content {
-  margin: 12px;
-}
-
-.leaflet-control-zoom a {
-  background: #1a1a2e !important;
-  color: #e5e5e5 !important;
-  border-color: #333 !important;
-}
-
-.leaflet-control-attribution {
-  background: rgba(10, 10, 15, 0.8) !important;
-  color: #666 !important;
-}
-
-.event-feed::-webkit-scrollbar {
-  width: 6px;
-}
-.event-feed::-webkit-scrollbar-track {
-  background: #111;
-}
-.event-feed::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
-}
-
-@keyframes pulse-critical {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-.pulse-critical {
-  animation: pulse-critical 1.5s ease-in-out infinite;
-}
+.event-feed::-webkit-scrollbar { width: 6px; }
+.event-feed::-webkit-scrollbar-track { background: #111; }
+.event-feed::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }

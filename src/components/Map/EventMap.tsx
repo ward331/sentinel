@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
-import { useEffect } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import type { SentinelEvent } from '../../types/sentinel'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -21,9 +22,8 @@ function getCoords(event: SentinelEvent): [number, number] | null {
   if (!event.location?.coordinates) return null
   const c = event.location.coordinates
   if (event.location.type === 'Point' && Array.isArray(c) && c.length >= 2) {
-    return [c[1] as number, c[0] as number] // [lat, lon]
+    return [c[1] as number, c[0] as number]
   }
-  // For Polygons, compute centroid from first ring
   if (event.location.type === 'Polygon' && Array.isArray(c) && c.length > 0) {
     const ring = c as number[][]
     if (ring.length > 0 && Array.isArray(ring[0])) {
@@ -45,16 +45,68 @@ function formatTime(ts: string): string {
   }
 }
 
-function AutoFit({ events }: { events: SentinelEvent[] }) {
+// Manages markers imperatively via Leaflet API to avoid React re-renders
+function MarkerLayer({ events, onSelectEvent }: { events: SentinelEvent[], onSelectEvent?: (e: SentinelEvent) => void }) {
+  const map = useMap()
+  const layerRef = useRef<L.LayerGroup>(L.layerGroup())
+  const onSelectRef = useRef(onSelectEvent)
+  onSelectRef.current = onSelectEvent
+
+  useEffect(() => {
+    layerRef.current.addTo(map)
+    return () => { layerRef.current.remove() }
+  }, [map])
+
+  useEffect(() => {
+    const group = layerRef.current
+    group.clearLayers()
+
+    const items = events.slice(0, 500)
+    for (const event of items) {
+      const coords = getCoords(event)
+      if (!coords) continue
+
+      const color = SEVERITY_COLORS[event.severity] || '#666'
+      const radius = SEVERITY_RADIUS[event.severity] || 5
+
+      const marker = L.circleMarker(coords, {
+        radius,
+        color,
+        fillColor: color,
+        fillOpacity: 0.7,
+        weight: 2,
+      })
+
+      const mag = event.magnitude > 0 ? `<p style="font-size:11px;font-family:monospace">Magnitude: ${event.magnitude.toFixed(1)}</p>` : ''
+      const desc = event.description ? `<p style="font-size:11px;color:#ccc;margin-top:4px">${event.description.slice(0, 150)}</p>` : ''
+
+      marker.bindPopup(`
+        <div style="min-width:200px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color}"></span>
+            <strong style="font-size:13px">${event.title}</strong>
+          </div>
+          <p style="font-size:11px;color:#999">${event.source} · ${event.category}</p>
+          ${mag}
+          <p style="font-size:11px;color:#777;margin-top:4px">${formatTime(event.occurred_at)}</p>
+          ${desc}
+        </div>
+      `)
+
+      marker.on('click', () => onSelectRef.current?.(event))
+      group.addLayer(marker)
+    }
+  }, [events])
+
+  return null
+}
+
+function InvalidateSize() {
   const map = useMap()
   useEffect(() => {
-    if (events.length === 0) return
-    const critical = events.filter(e => e.severity === 'critical')
-    if (critical.length > 0) {
-      const c = getCoords(critical[0])
-      if (c) map.flyTo(c, 6, { duration: 1 })
-    }
-  }, [events.length])
+    const timer = setTimeout(() => map.invalidateSize(), 200)
+    return () => clearTimeout(timer)
+  }, [map])
   return null
 }
 
@@ -63,59 +115,24 @@ interface Props {
   onSelectEvent?: (event: SentinelEvent) => void
 }
 
-export function EventMap({ events, onSelectEvent }: Props) {
-  const markers = events
-    .map(e => ({ event: e, coords: getCoords(e) }))
-    .filter((m): m is { event: SentinelEvent; coords: [number, number] } => m.coords !== null)
-
+// memo prevents MapContainer from ever re-rendering
+export const EventMap = memo(function EventMap({ events, onSelectEvent }: Props) {
   return (
-    <MapContainer
-      center={[20, 0]}
-      zoom={3}
-      className="h-full w-full"
-      zoomControl={true}
-    >
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-      />
-      <AutoFit events={events} />
-      {markers.map(({ event, coords }) => (
-        <CircleMarker
-          key={event.id}
-          center={coords}
-          radius={SEVERITY_RADIUS[event.severity] || 5}
-          pathOptions={{
-            color: SEVERITY_COLORS[event.severity] || '#666',
-            fillColor: SEVERITY_COLORS[event.severity] || '#666',
-            fillOpacity: 0.7,
-            weight: 2,
-          }}
-          eventHandlers={{
-            click: () => onSelectEvent?.(event),
-          }}
-        >
-          <Popup>
-            <div className="min-w-[200px]">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full"
-                  style={{ background: SEVERITY_COLORS[event.severity] || '#666' }}
-                />
-                <strong className="text-sm">{event.title}</strong>
-              </div>
-              <p className="text-xs text-gray-400 mb-1">{event.source} &middot; {event.category}</p>
-              {event.magnitude > 0 && (
-                <p className="text-xs font-mono">Magnitude: {event.magnitude.toFixed(1)}</p>
-              )}
-              <p className="text-xs text-gray-500 mt-1">{formatTime(event.occurred_at)}</p>
-              {event.description && (
-                <p className="text-xs text-gray-300 mt-1 line-clamp-3">{event.description}</p>
-              )}
-            </div>
-          </Popup>
-        </CircleMarker>
-      ))}
-    </MapContainer>
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <MapContainer
+        center={[20, 0]}
+        zoom={3}
+        style={{ width: '100%', height: '100%' }}
+        zoomControl={true}
+      >
+        <TileLayer
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://openstreetmap.org/">OpenStreetMap</a>'
+          maxZoom={19}
+        />
+        <InvalidateSize />
+        <MarkerLayer events={events} onSelectEvent={onSelectEvent} />
+      </MapContainer>
+    </div>
   )
-}
+})

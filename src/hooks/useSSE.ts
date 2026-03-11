@@ -7,7 +7,21 @@ type SSECallback = (event: SentinelEvent) => void
 export function useSSE(onEvent: SSECallback, enabled: boolean = true) {
   const esRef = useRef<EventSource | null>(null)
   const cbRef = useRef(onEvent)
+  const bufferRef = useRef<SentinelEvent[]>([])
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   cbRef.current = onEvent
+
+  // Batch SSE events — flush at most every 2 seconds
+  const flush = useCallback(() => {
+    timerRef.current = null
+    const buf = bufferRef.current
+    if (buf.length === 0) return
+    bufferRef.current = []
+    // Only deliver the most recent events from the batch
+    for (const event of buf.slice(-20)) {
+      cbRef.current(event)
+    }
+  }, [])
 
   const connect = useCallback(() => {
     if (!getConfig().configured || !enabled) return
@@ -16,28 +30,30 @@ export function useSSE(onEvent: SSECallback, enabled: boolean = true) {
     const es = new EventSource(sseUrl())
     esRef.current = es
 
-    es.addEventListener('new', (e) => {
+    const handleEvent = (e: MessageEvent) => {
       try {
         const event: SentinelEvent = JSON.parse(e.data)
-        cbRef.current(event)
+        bufferRef.current.push(event)
+        if (!timerRef.current) {
+          timerRef.current = setTimeout(flush, 2000)
+        }
       } catch { /* ignore parse errors */ }
-    })
+    }
 
-    es.addEventListener('message', (e) => {
-      try {
-        const event: SentinelEvent = JSON.parse(e.data)
-        cbRef.current(event)
-      } catch { /* ignore */ }
-    })
+    es.addEventListener('new', handleEvent)
+    es.addEventListener('message', handleEvent)
 
     es.onerror = () => {
       es.close()
       setTimeout(connect, 5000)
     }
-  }, [enabled])
+  }, [enabled, flush])
 
   useEffect(() => {
     connect()
-    return () => { esRef.current?.close() }
+    return () => {
+      esRef.current?.close()
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
   }, [connect])
 }
