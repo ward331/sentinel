@@ -1,0 +1,10 @@
+[
+  {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "weight": 5},
+  {"name": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "weight": 4},
+  {"name": "CISA Alerts", "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "weight": 5},
+  {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/", "weight": 4},
+  {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "weight": 3},
+  {"name": "Reuters World", "url": "https://www.reutersagency.com/feed/", "weight": 4},
+  {"name": "Bellingcat", "url": "https://www.bellingcat.com/feed/", "weight": 5},
+  {"name": "War on the Rocks", "url": "https://warontherocks.com/feed/", "weight": 3}
+]

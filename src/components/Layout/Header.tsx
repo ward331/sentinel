@@ -1,76 +1,76 @@
-import { Shield, Settings, Activity, AlertTriangle, Eye, Radio, TrendingUp, BookOpen } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Map, Activity, AlertTriangle, Settings } from 'lucide-react'
 
-export type View = 'map' | 'intel' | 'financial' | 'health' | 'alerts' | 'osint' | 'settings'
+export type View = 'map' | 'health' | 'alerts' | 'settings'
 
-interface Props {
-  view: View
-  onViewChange: (view: View) => void
-  onOpenSettings: () => void
-  connected: boolean
-  eventCount: number
+interface HeaderProps {
+  currentView: View
+  onViewChange: (v: View) => void
+  isConnected: boolean
 }
 
-export function Header({ view, onViewChange, onOpenSettings, connected, eventCount }: Props) {
+const TABS: { key: View; label: string; icon: React.ReactNode }[] = [
+  { key: 'map', label: 'MAP', icon: <Map size={11} /> },
+  { key: 'health', label: 'HEALTH', icon: <Activity size={11} /> },
+  { key: 'alerts', label: 'ALERTS', icon: <AlertTriangle size={11} /> },
+  { key: 'settings', label: 'SETTINGS', icon: <Settings size={11} /> },
+]
+
+function useUTCClock() {
+  const [time, setTime] = useState(() => new Date().toISOString().slice(11, 19) + 'Z')
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTime(new Date().toISOString().slice(11, 19) + 'Z')
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [])
+  return time
+}
+
+export function Header({ currentView, onViewChange, isConnected }: HeaderProps) {
+  const utc = useUTCClock()
+
   return (
-    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 justify-between shrink-0">
-      <div className="flex items-center gap-3">
-        <Shield className="w-5 h-5 text-emerald-400" />
-        <span className="font-bold text-white tracking-tight">WATCHTOWER</span>
-        <span className="text-xs text-gray-500 hidden sm:inline">SENTINEL V3</span>
+    <header className="h-9 min-h-9 max-h-9 bg-gray-950 border-b border-gray-800 flex items-center px-4 justify-between shrink-0 select-none">
+      {/* Left: Branding */}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-mono uppercase tracking-wider text-cyan-500 font-bold">
+          &#9670; SENTINEL V4
+        </span>
       </div>
 
-      <nav className="flex items-center gap-0.5 overflow-x-auto">
-        <NavBtn active={view === 'map'} onClick={() => onViewChange('map')}>
-          <Eye className="w-4 h-4" />
-          <span className="hidden md:inline">Map</span>
-        </NavBtn>
-        <NavBtn active={view === 'intel'} onClick={() => onViewChange('intel')}>
-          <Radio className="w-4 h-4" />
-          <span className="hidden md:inline">Intel</span>
-        </NavBtn>
-        <NavBtn active={view === 'financial'} onClick={() => onViewChange('financial')}>
-          <TrendingUp className="w-4 h-4" />
-          <span className="hidden md:inline">Markets</span>
-        </NavBtn>
-        <NavBtn active={view === 'health'} onClick={() => onViewChange('health')}>
-          <Activity className="w-4 h-4" />
-          <span className="hidden md:inline">Health</span>
-        </NavBtn>
-        <NavBtn active={view === 'alerts'} onClick={() => onViewChange('alerts')}>
-          <AlertTriangle className="w-4 h-4" />
-          <span className="hidden md:inline">Alerts</span>
-        </NavBtn>
-        <NavBtn active={view === 'osint'} onClick={() => onViewChange('osint')}>
-          <BookOpen className="w-4 h-4" />
-          <span className="hidden md:inline">OSINT</span>
-        </NavBtn>
+      {/* Center: View tabs */}
+      <nav className="flex items-center gap-0.5">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => onViewChange(tab.key)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-mono uppercase tracking-wider transition-colors ${
+              currentView === tab.key
+                ? 'bg-cyan-950/60 text-cyan-400 border border-cyan-800/50'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900 border border-transparent'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
+      {/* Right: Connection + UTC */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
-          <span className="text-xs text-gray-500">{eventCount}</span>
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              isConnected ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.6)]' : 'bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.6)]'
+            }`}
+          />
+          <span className="text-[10px] font-mono uppercase tracking-wider text-gray-600">
+            {isConnected ? 'ONLINE' : 'OFFLINE'}
+          </span>
         </div>
-        <button
-          onClick={() => onOpenSettings()}
-          className={`p-1.5 rounded transition-colors ${view === 'settings' ? 'bg-gray-700 text-emerald-400' : 'hover:bg-gray-800 text-gray-400'}`}
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <span className="text-[10px] font-mono text-gray-500 tabular-nums">{utc}</span>
       </div>
     </header>
-  )
-}
-
-function NavBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm transition-colors ${
-        active ? 'bg-gray-800 text-emerald-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
