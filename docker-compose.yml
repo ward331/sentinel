@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  sentinel:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - sentinel-data:/app/data
+      - ./config.json:/app/config.json:ro
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+
+volumes:
+  sentinel-data:

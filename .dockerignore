@@ -1,0 +1,9 @@
+.git
+bin/
+dist/
+*.md
+logs/
+state/
+sentinel-server
+*.tar.gz
+*.zip
