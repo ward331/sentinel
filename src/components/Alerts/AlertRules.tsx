@@ -9,7 +9,7 @@ export function AlertRules() {
 
   useEffect(() => {
     fetchAlertRules()
-      .then(res => setRules(res.rules || []))
+      .then(res => setRules(Array.isArray(res) ? res : res.rules || []))
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
 

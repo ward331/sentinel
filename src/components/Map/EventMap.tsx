@@ -23,6 +23,17 @@ function getCoords(event: SentinelEvent): [number, number] | null {
   if (event.location.type === 'Point' && Array.isArray(c) && c.length >= 2) {
     return [c[1] as number, c[0] as number] // [lat, lon]
   }
+  // For Polygons, compute centroid from first ring
+  if (event.location.type === 'Polygon' && Array.isArray(c) && c.length > 0) {
+    const ring = c as number[][]
+    if (ring.length > 0 && Array.isArray(ring[0])) {
+      let sumLat = 0, sumLon = 0
+      for (const pt of ring) {
+        sumLon += pt[0]; sumLat += pt[1]
+      }
+      return [sumLat / ring.length, sumLon / ring.length]
+    }
+  }
   return null
 }
 
