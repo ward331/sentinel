@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function SetupWizard({ onComplete }: Props) {
-  const [url, setUrl] = useState('http://localhost:8080')
+  const [url, setUrl] = useState('http://127.0.0.1:8080')
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthResponse | null>(null)
@@ -39,12 +39,12 @@ export function SetupWizard({ onComplete }: Props) {
           <Shield className="w-10 h-10 text-emerald-400" />
           <div>
             <h1 className="text-2xl font-bold text-white">Watchtower</h1>
-            <p className="text-sm text-gray-400">SENTINEL V2 Frontend</p>
+            <p className="text-sm text-gray-400">SENTINEL V3 Frontend</p>
           </div>
         </div>
 
         <p className="text-gray-300 mb-6">
-          Enter the URL of your SENTINEL V2 server to get started.
+          Enter the URL of your SENTINEL V3 server to get started.
         </p>
 
         <div className="space-y-4">
@@ -54,7 +54,7 @@ export function SetupWizard({ onComplete }: Props) {
               type="url"
               value={url}
               onChange={e => setUrl(e.target.value)}
-              placeholder="http://localhost:8080"
+              placeholder="http://127.0.0.1:8080"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
               onKeyDown={e => e.key === 'Enter' && handleTest()}
             />
@@ -84,6 +84,7 @@ export function SetupWizard({ onComplete }: Props) {
               </div>
               <div className="text-sm text-gray-300 space-y-1">
                 <p>Status: <span className="text-emerald-400">{health.status}</span></p>
+                {health.version && <p>Version: <span className="text-emerald-400">{health.version}</span></p>}
                 <p>Uptime: {Math.floor(health.uptime_seconds / 3600)}h {Math.floor((health.uptime_seconds % 3600) / 60)}m</p>
               </div>
 
@@ -98,7 +99,7 @@ export function SetupWizard({ onComplete }: Props) {
         </div>
 
         <p className="text-xs text-gray-600 mt-6 text-center">
-          Watchtower connects to any SENTINEL V2 instance via REST + SSE
+          Watchtower connects to any SENTINEL V3 instance via REST + SSE
         </p>
       </div>
     </div>

@@ -81,7 +81,7 @@ export function SettingsPage({ onDisconnect }: Props) {
 
       // Extract general settings
       if (config.retention_days !== undefined) {
-        setRetentionDays(config.retention_days)
+        setRetentionDays(Number(config.retention_days) || 30)
       }
     } catch (err) {
       setError(`Failed to load config: ${err instanceof Error ? err.message : String(err)}`)
@@ -179,11 +179,6 @@ export function SettingsPage({ onDisconnect }: Props) {
   for (const entry of API_KEYS) {
     if (!keysByCategory[entry.category]) keysByCategory[entry.category] = []
     keysByCategory[entry.category].push(entry)
-  }
-
-  function isKeyConfigured(key: string): boolean {
-    const val = apiKeys[key]
-    return !!val && val !== '' && !val.startsWith('***')
   }
 
   function hasStoredKey(key: string): boolean {

@@ -2,7 +2,7 @@
 # SENTINEL V3 — Setup Script
 set -e
 
-echo "🛰 SENTINEL V3 Setup"
+echo "🛡 SENTINEL V3 Setup"
 echo "===================="
 
 # Build if needed

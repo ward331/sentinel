@@ -110,7 +110,7 @@ def send_gmail(title, body, level='info'):
 <h3 style="color: #fff; margin: 8px 0;">{title}</h3>
 <pre style="color: #ccc; white-space: pre-wrap; margin: 8px 0;">{body}</pre>
 </div>
-<p style="color: #555; font-size: 11px; margin-top: 12px;">🛰 SENTINEL AI Security System</p>
+<p style="color: #555; font-size: 11px; margin-top: 12px;">🛡 SENTINEL AI Security System</p>
 </body></html>"""
 
     msg.attach(MIMEText(plain, 'plain'))

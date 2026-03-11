@@ -1173,16 +1173,16 @@ async function createTicketFromTelegram(text, senderId, senderName, chatId) {
 
     if (res.ok && result.success) {
       await sendReply(chatId,
-        `🛰 <b>SENTINEL</b> — Ticket created.\n\n<i>"${ticketContent.length > 120 ? ticketContent.slice(0, 120) + '...' : ticketContent}"</i>\n\nIt's in the inbox and will be routed shortly.`
+        `🛡 <b>SENTINEL</b> — Ticket created.\n\n<i>"${ticketContent.length > 120 ? ticketContent.slice(0, 120) + '...' : ticketContent}"</i>\n\nIt's in the inbox and will be routed shortly.`
       );
     } else if (res.status === 403) {
-      await sendReply(chatId, `🛰 <b>SENTINEL</b> — Access denied. ${result.error || ''}`);
+      await sendReply(chatId, `🛡 <b>SENTINEL</b> — Access denied. ${result.error || ''}`);
     } else {
-      await sendReply(chatId, `🛰 <b>SENTINEL</b> — Couldn't create the ticket. Try again later.`);
+      await sendReply(chatId, `🛡 <b>SENTINEL</b> — Couldn't create the ticket. Try again later.`);
     }
   } catch (error) {
     console.error('[Bot] Failed to create ticket:', error.message);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Error creating ticket. System may be down.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Error creating ticket. System may be down.`);
   }
 }
 
@@ -1211,7 +1211,7 @@ async function handleSlashTickets(chatId) {
     };
     const prioEmoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
 
-    let msg = `🛰 <b>SENTINEL — TICKETS</b>\n\n`;
+    let msg = `🛡 <b>SENTINEL — TICKETS</b>\n\n`;
     msg += `<b>Total:</b> ${data.total}\n\n`;
 
     msg += `<b>By Status:</b>\n`;
@@ -1238,7 +1238,7 @@ async function handleSlashTickets(chatId) {
     await sendReply(chatId, msg);
   } catch (error) {
     console.error('[Cmd] /tickets error:', error.message);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Failed to fetch tickets.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Failed to fetch tickets.`);
   }
 }
 
@@ -1252,7 +1252,7 @@ async function handleSlashAgents(chatId) {
 
     const statusEmoji = { working: '🟢', standby: '🟡', offline: '🔴', error: '❌' };
 
-    let msg = `🛰 <b>SENTINEL — AGENTS</b>\n\n`;
+    let msg = `🛡 <b>SENTINEL — AGENTS</b>\n\n`;
     let totalAgents = 0;
     let working = 0;
 
@@ -1276,7 +1276,7 @@ async function handleSlashAgents(chatId) {
     await sendReply(chatId, msg);
   } catch (error) {
     console.error('[Cmd] /agents error:', error.message);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Failed to fetch agents.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Failed to fetch agents.`);
   }
 }
 
@@ -1341,7 +1341,7 @@ async function handleSlashStatus(chatId) {
       governorStatus = gRes.ok ? '✅ online' : `⚠️ HTTP ${gRes.status}`;
     } catch { governorStatus = '❌ unreachable'; }
 
-    let msg = `🛰 <b>SENTINEL — SYSTEM STATUS</b>\n\n`;
+    let msg = `🛡 <b>SENTINEL — SYSTEM STATUS</b>\n\n`;
     msg += `<b>🖥️ Mission Control:</b> ${mcStatus}\n`;
     msg += `<b>⚡ Governor LLM:</b> ${governorStatus}\n`;
     msg += `<b>📡 Telegram Bot:</b> ✅ active (standalone)\n\n`;
@@ -1356,12 +1356,12 @@ async function handleSlashStatus(chatId) {
     await sendReply(chatId, msg);
   } catch (error) {
     console.error('[Cmd] /status error:', error.message);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Failed to fetch system status.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Failed to fetch system status.`);
   }
 }
 
 async function handleSlashHelp(chatId) {
-  const msg = `🛰 <b>SENTINEL — COMMANDS</b>\n\n` +
+  const msg = `🛡 <b>SENTINEL — COMMANDS</b>\n\n` +
     `<b>/tickets</b> — Ticket summary (counts, priorities, urgent items)\n` +
     `<b>/agents</b> — All agents by team with status\n` +
     `<b>/status</b> — Full system health check\n` +
@@ -2479,7 +2479,7 @@ async function processTextMessage(update) {
   const lockCheck = checkLockout(senderId);
   if (lockCheck.locked) {
     console.log(`[Bot] Locked out ${senderId} (${lockCheck.remaining}s remaining)`);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Temporarily locked. Try again in ${lockCheck.remaining}s.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Temporarily locked. Try again in ${lockCheck.remaining}s.`);
     return;
   }
 
@@ -2487,13 +2487,13 @@ async function processTextMessage(update) {
   const rateCheck = checkRateLimit(senderId);
   if (!rateCheck.allowed) {
     console.log(`[Bot] Rate limited ${senderId} (resets in ${rateCheck.resetIn}s)`);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Slow down. Try again in ${rateCheck.resetIn}s.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Slow down. Try again in ${rateCheck.resetIn}s.`);
     return;
   }
 
   // Message length check (#10)
   if (text.length > rateLimiter.maxMsgLength) {
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Message too long (${text.length} chars, max ${rateLimiter.maxMsgLength}). Break it up.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Message too long (${text.length} chars, max ${rateLimiter.maxMsgLength}). Break it up.`);
     return;
   }
 
@@ -2556,10 +2556,10 @@ async function processTextMessage(update) {
     // Output sanitization (#2 — strip leaked secrets before sending)
     reply = sanitizeOutput(reply);
 
-    await sendReply(chatId, `🛰 <b>SENTINEL</b>\n\n${reply}`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b>\n\n${reply}`);
   } catch (error) {
     console.error('[Bot] Failed to process text message:', error.message);
-    await sendReply(chatId, `🛰 <b>SENTINEL</b> — Something went wrong. Try again.`);
+    await sendReply(chatId, `🛡 <b>SENTINEL</b> — Something went wrong. Try again.`);
   }
 }
 
@@ -2680,7 +2680,7 @@ const server = http.createServer((req, res) => {
 // ─── Startup ────────────────────────────────────────────────────
 
 function start() {
-  console.log('🛰 SENTINEL Bot starting...');
+  console.log('🛡 SENTINEL Bot starting...');
   console.log(`   Port: ${PORT}`);
   console.log(`   Dashboard: ${DASHBOARD_URL}`);
   console.log(`   Ollama: ${OLLAMA_URL} (${OLLAMA_MODEL}) — primary/chat`);
