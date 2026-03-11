@@ -13,8 +13,8 @@ profile.cov
 # Go
 go.work
 go.work.sum
-sentinel
-sentinel.exe
+/sentinel
+/sentinel.exe
 
 # Env
 .env
@@ -34,4 +34,24 @@ skills/
 
 # Frontend
 node_modules
-dist
+dist/
+
+# Build artifacts
+bin/
+sentinel-server
+
+# Runtime data
+data/
+logs/
+state/
+*.db
+*.db-wal
+*.db-shm
+
+# Config with secrets
+config.json
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
