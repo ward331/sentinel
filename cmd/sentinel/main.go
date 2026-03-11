@@ -99,7 +99,6 @@ func loadConfig() (*config.Config, error) {
 		cfg = fileConfig
 	}
 
-	// Override with CLI flags
 	if *dataDir != "" {
 		cfg.DataDir = *dataDir
 	}
@@ -110,7 +109,6 @@ func loadConfig() (*config.Config, error) {
 		cfg.Server.Host = *host
 	}
 
-	// Ensure data directory exists
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory %s: %w", cfg.DataDir, err)
 	}
@@ -141,7 +139,6 @@ func startServer(cfg *config.Config) error {
 	pollerInstance.Start()
 	defer pollerInstance.Stop()
 
-	// Count enabled providers by tier
 	tier0Count, tier1Count := countProvidersByTier(pollerInstance)
 
 	// ── 3. Intelligence Engines ─────────────────────────────
@@ -175,13 +172,13 @@ func startServer(cfg *config.Config) error {
 	defer deadReckoning.Stop()
 
 	// ── 4. Notification Dispatcher ──────────────────────────
-	dispatcher := initializeNotifications(cfg)
+	notifyDispatcher := initializeNotifications(cfg)
 
 	// ── 4b. Proximity Alert Engine ──────────────────────────
 	var proxAlert *engine.ProximityAlert
 	if cfg.Location.Set {
 		proxAlert = engine.NewProximityAlert(cfg.Location, func(title, body, severity string) {
-			dispatcher.Dispatch(context.Background(), notify.Alert{
+			notifyDispatcher.Dispatch(context.Background(), notify.Alert{
 				Title:      title,
 				Body:       body,
 				Severity:   severity,
@@ -244,18 +241,18 @@ func startServer(cfg *config.Config) error {
 	// ── 8. Startup Summary ──────────────────────────────────
 	enabledTotal := tier0Count + tier1Count
 	engineSummary := strings.Join([]string{
-		check("correlation", true),
-		check("truth", true),
-		check("anomaly", true),
-		check("signal-board", cfg.SignalBoard.Enabled),
-		check("dead-reckoning", cfg.EntityTracking.Enabled),
-		check("proximity", proxAlert != nil),
+		statusMark("correlation", true),
+		statusMark("truth", true),
+		statusMark("anomaly", true),
+		statusMark("signal-board", cfg.SignalBoard.Enabled),
+		statusMark("dead-reckoning", cfg.EntityTracking.Enabled),
+		statusMark("proximity", proximityEnabled),
 	}, " | ")
 
-	notifyNames := dispatcher.EnabledChannelNames()
+	enabledChannels := notifyDispatcher.EnabledChannelNames()
 	notifySummary := "none"
-	if len(notifyNames) > 0 {
-		notifySummary = strings.Join(notifyNames, " | ")
+	if len(enabledChannels) > 0 {
+		notifySummary = strings.Join(enabledChannels, " | ")
 	}
 
 	log.Printf("\n"+
@@ -438,8 +435,8 @@ func countProvidersByTier(p *poller.Poller) (tier0, tier1 int) {
 	return
 }
 
-// check returns "name ok" or "name off" for the startup log.
-func check(name string, on bool) string {
+// statusMark returns "name ok" or "name off" for the startup log.
+func statusMark(name string, on bool) string {
 	if on {
 		return name + " ok"
 	}
