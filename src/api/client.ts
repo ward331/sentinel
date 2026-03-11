@@ -74,7 +74,7 @@ export async function fetchProviderHealth() {
   return api<Record<string, unknown>>('/api/providers/health')
 }
 
-export async function fetchAlertRules(): Promise<{ rules: AlertRule[] }> {
+export async function fetchAlertRules(): Promise<AlertRule[]> {
   return api('/api/alerts/rules')
 }
 

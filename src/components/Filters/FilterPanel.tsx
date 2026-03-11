@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import type { EventFilters } from '../../types/sentinel'
-import { Search, Filter, X } from 'lucide-react'
+import { Search, Filter, X, Satellite } from 'lucide-react'
+
+const KNOWN_CATEGORIES = [
+  'earthquake', 'weather', 'wildfire', 'flood', 'volcano', 'tsunami',
+  'conflict', 'aviation', 'maritime', 'health', 'satellite', 'space_weather',
+  'financial', 'piracy', 'disaster',
+]
 
 interface Props {
   filters: EventFilters
@@ -10,7 +16,7 @@ interface Props {
 }
 
 export function FilterPanel({ filters, onChange, sources, categories }: Props) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
 
   function update(partial: Partial<EventFilters>) {
     onChange({ ...filters, ...partial })
@@ -20,7 +26,10 @@ export function FilterPanel({ filters, onChange, sources, categories }: Props) {
     onChange({})
   }
 
-  const hasFilters = filters.source || filters.category || filters.severity || filters.q || filters.min_magnitude
+  const allCategories = Array.from(new Set([...KNOWN_CATEGORIES, ...categories])).sort()
+  const hidingSatellites = filters.exclude_category?.includes('satellite')
+
+  const hasFilters = filters.source || filters.category || filters.severity || filters.q || filters.min_magnitude || filters.exclude_category
 
   return (
     <div className="border-b border-gray-800 bg-gray-900/50">
@@ -47,46 +56,67 @@ export function FilterPanel({ filters, onChange, sources, categories }: Props) {
       </div>
 
       {expanded && (
-        <div className="px-4 pb-3 grid grid-cols-2 gap-2">
-          <select
-            value={filters.severity || ''}
-            onChange={e => update({ severity: e.target.value || undefined })}
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
-          >
-            <option value="">All Severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
+        <div className="px-4 pb-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={filters.severity || ''}
+              onChange={e => update({ severity: e.target.value || undefined })}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
+            >
+              <option value="">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
 
-          <select
-            value={filters.source || ''}
-            onChange={e => update({ source: e.target.value || undefined })}
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
-          >
-            <option value="">All Sources</option>
-            {sources.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+            <select
+              value={filters.source || ''}
+              onChange={e => update({ source: e.target.value || undefined })}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
+            >
+              <option value="">All Sources</option>
+              {sources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
 
-          <select
-            value={filters.category || ''}
-            onChange={e => update({ category: e.target.value || undefined })}
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
-          >
-            <option value="">All Categories</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+            <select
+              value={filters.category || ''}
+              onChange={e => update({ category: e.target.value || undefined })}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300"
+            >
+              <option value="">All Categories</option>
+              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
 
-          <div className="flex items-center gap-1">
             <input
               type="number"
               value={filters.min_magnitude ?? ''}
               onChange={e => update({ min_magnitude: e.target.value ? Number(e.target.value) : undefined })}
-              placeholder="Min mag"
+              placeholder="Min magnitude"
               step="0.1"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 placeholder-gray-600"
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 placeholder-gray-600"
             />
+          </div>
+
+          {/* Quick exclude toggles */}
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <button
+              onClick={() => {
+                if (hidingSatellites) {
+                  update({ exclude_category: undefined })
+                } else {
+                  update({ exclude_category: 'satellite' })
+                }
+              }}
+              className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${
+                hidingSatellites
+                  ? 'bg-amber-900/40 border-amber-700 text-amber-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <Satellite className="w-3 h-3" />
+              {hidingSatellites ? 'Satellites hidden' : 'Hide satellites'}
+            </button>
           </div>
         </div>
       )}

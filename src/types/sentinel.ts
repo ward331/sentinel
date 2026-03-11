@@ -93,6 +93,8 @@ export interface EventFilters {
   source?: string
   category?: string
   severity?: string
+  exclude_category?: string
+  exclude_source?: string
   min_magnitude?: number
   max_magnitude?: number
   q?: string
