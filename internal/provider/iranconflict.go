@@ -193,10 +193,16 @@ func (p *IranConflictProvider) generateDescription(wave *WaveData) string {
 	)
 }
 
+// WaveDataWrapper represents the top-level JSON object that wraps wave data
+type WaveDataWrapper struct {
+	Waves []*WaveData `json:"waves"`
+	Data  []*WaveData `json:"data"`
+}
+
 // fetchWavesData fetches waves.json from GitHub
 func (p *IranConflictProvider) fetchWavesData(ctx context.Context) ([]*WaveData, error) {
 	url := fmt.Sprintf("%s/waves.json", p.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -218,12 +224,32 @@ func (p *IranConflictProvider) fetchWavesData(ctx context.Context) ([]*WaveData,
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Try parsing as array first (original format)
 	var waves []*WaveData
-	if err := json.Unmarshal(body, &waves); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	if err := json.Unmarshal(body, &waves); err == nil {
+		return waves, nil
 	}
 
-	return waves, nil
+	// Try parsing as object with "waves" or "data" key
+	var wrapper WaveDataWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON (tried array and object formats): %w", err)
+	}
+
+	if len(wrapper.Waves) > 0 {
+		return wrapper.Waves, nil
+	}
+	if len(wrapper.Data) > 0 {
+		return wrapper.Data, nil
+	}
+
+	// Try parsing as a single object
+	var single WaveData
+	if err := json.Unmarshal(body, &single); err == nil && single.OperationName != "" {
+		return []*WaveData{&single}, nil
+	}
+
+	return []*WaveData{}, nil
 }
 
 // WaveData represents a strike wave from the OSINT dataset

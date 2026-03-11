@@ -37,8 +37,9 @@ func (p *GlobalForestWatchProvider) Name() string {
 
 
 // Enabled returns whether the provider is enabled
+// Disabled: GFW API requires authentication. Fire data is provided by nasa_firms provider instead.
 func (p *GlobalForestWatchProvider) Enabled() bool {
-	return true
+	return false
 }
 
 

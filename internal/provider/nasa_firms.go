@@ -25,7 +25,7 @@ type NASAFIRMSProvider struct {
 func NewNASAFIRMSProvider(config *Config) *NASAFIRMSProvider {
 	return &NASAFIRMSProvider{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second, // Global CSV can be large
 		},
 		config: config,
 	}
@@ -55,8 +55,17 @@ func (p *NASAFIRMSProvider) Interval() time.Duration {
 // Fetch retrieves fire detection data from NASA FIRMS API
 func (p *NASAFIRMSProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// NASA FIRMS API for near real-time fire/hotspot data
-	// Using VIIRS 375m data (most sensitive for fire detection)
-	url := "https://firms.modaps.eosdis.nasa.gov/api/area/csv/eea9d7e5d9f4b36c8b8c7a1d3e2f4a5/VIIRS_SNPP_NRT/world/1"
+	// Using VIIRS 375m active fire data via the open data CSV endpoint
+	apiKey := "VALID_KEY"
+	if p.config != nil && p.config.APIKey != "" {
+		apiKey = p.config.APIKey
+	}
+	// Use the open active_fire data endpoint (no API key required for recent data)
+	url := "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_24h.csv"
+	if apiKey != "VALID_KEY" {
+		// If we have a real API key, use the API endpoint for more control
+		url = fmt.Sprintf("https://firms.modaps.eosdis.nasa.gov/api/area/csv/%s/VIIRS_SNPP_NRT/world/1", apiKey)
+	}
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -102,24 +111,29 @@ func (p *NASAFIRMSProvider) parseCSVData(csvData string) ([]*model.Event, error)
 		headerMap[strings.TrimSpace(header)] = i
 	}
 	
-	// Parse data rows
+	// Parse data rows — limit to 200 most recent to avoid memory issues
+	// (the global 24h CSV can have 100K+ rows)
+	maxEvents := 200
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue
 		}
-		
+
 		fields := strings.Split(line, ",")
 		if len(fields) < len(headers) {
 			continue // Skip malformed lines
 		}
-		
+
 		event, err := p.parseFireEvent(fields, headerMap)
 		if err != nil {
 			continue // Skip individual parsing errors
 		}
-		
+
 		events = append(events, event)
+		if len(events) >= maxEvents {
+			break
+		}
 	}
 	
 	return events, nil

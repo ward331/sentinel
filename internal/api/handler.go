@@ -407,6 +407,14 @@ func parseListFilter(r *http.Request) storage.ListFilter {
 		filter.Query = query
 	}
 
+	if exc := r.URL.Query().Get("exclude_category"); exc != "" {
+		filter.ExcludeCategory = exc
+	}
+
+	if exc := r.URL.Query().Get("exclude_source"); exc != "" {
+		filter.ExcludeSource = exc
+	}
+
 	if startStr := r.URL.Query().Get("start_time"); startStr != "" {
 		if t, err := time.Parse(time.RFC3339, startStr); err == nil {
 			filter.StartTime = t

@@ -56,8 +56,12 @@ func (p *AirplanesLiveProvider) Fetch(ctx context.Context) ([]*model.Event, erro
 	// Get bounding box from config or use worldwide
 	bbox := p.getBoundingBox()
 	
-	// Build URL for airplanes.live API
-	url := fmt.Sprintf("https://api.airplanes.live/v2/point/%f/%f/%f", bbox.CenterLat, bbox.CenterLon, bbox.RadiusKm)
+	// Build URL for airplanes.live API (radius is in nautical miles, max 250)
+	radiusNM := bbox.RadiusKm / 1.852
+	if radiusNM > 250 {
+		radiusNM = 250
+	}
+	url := fmt.Sprintf("https://api.airplanes.live/v2/point/%.4f/%.4f/%.0f", bbox.CenterLat, bbox.CenterLon, radiusNM)
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -101,11 +105,11 @@ func (p *AirplanesLiveProvider) getBoundingBox() BoundingBox {
 		}
 	}
 	
-	// Default to worldwide coverage
+	// Default: use a major aviation hub for meaningful data (250 NM max radius)
 	return BoundingBox{
-		CenterLat: 0,
-		CenterLon: 0,
-		RadiusKm:  20000, // Earth's radius in km
+		CenterLat: 40.6413,
+		CenterLon: -73.7781,
+		RadiusKm:  460, // ~250 NM (max allowed by API)
 	}
 }
 
@@ -317,7 +321,7 @@ type Aircraft struct {
 	Lat     float64 `json:"lat"`
 	Lon     float64 `json:"lon"`
 	AltBaro int     `json:"alt_baro"`
-	Speed   int     `json:"speed"`
+	Speed   int     `json:"gs"`
 	Track   int     `json:"track"`
 	VertRate int    `json:"vert_rate"`
 	Squawk  string  `json:"squawk"`

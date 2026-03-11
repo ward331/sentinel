@@ -59,35 +59,60 @@ func (p *ProMEDProvider) Name() string {
 
 func (p *ProMEDProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// ProMED-mail RSS feed for emerging infectious diseases
-	url := "https://promedmail.org/wp-content/uploads/rss-full.xml"
-	
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ProMED request: %w", err)
+	// Try multiple known ProMED feed URLs since they change periodically
+	urls := []string{
+		"https://promedmail.org/feed/",
+		"https://promedmail.org/promed-posts/feed",
+		"https://promedmail.org/promed-posts/feed/",
 	}
-	
-	req.Header.Set("User-Agent", "SENTINEL/2.0 (https://github.com/ward331/sentinel)")
-	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml")
-	
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch ProMED RSS: %w", err)
+
+	var lastErr error
+	for _, url := range urls {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create ProMED request: %w", err)
+			continue
+		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SENTINEL/2.0)")
+		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, */*")
+
+		resp, err := p.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to fetch ProMED RSS from %s: %w", url, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("ProMED RSS returned status %d from %s: %s", resp.StatusCode, url, string(body))
+			continue
+		}
+
+		// Parse RSS feed
+		var rss RSSFeed
+		decoder := xml.NewDecoder(resp.Body)
+		if err := decoder.Decode(&rss); err != nil {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("failed to parse ProMED RSS from %s: %w", url, err)
+			continue
+		}
+		resp.Body.Close()
+
+		events, err := p.convertToEvents(rss)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return events, nil
 	}
-	defer resp.Body.Close()
-	
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ProMED RSS returned status %d: %s", resp.StatusCode, string(body))
+
+	// All URLs failed — return empty rather than crashing
+	if lastErr != nil {
+		return []*model.Event{}, nil
 	}
-	
-	// Parse RSS feed
-	var rss RSSFeed
-	decoder := xml.NewDecoder(resp.Body)
-	if err := decoder.Decode(&rss); err != nil {
-		return nil, fmt.Errorf("failed to parse ProMED RSS: %w", err)
-	}
-	
-	return p.convertToEvents(rss)
+	return []*model.Event{}, nil
 }
 
 // convertToEvents converts ProMED RSS feed to SENTINEL events

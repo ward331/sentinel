@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/openclaw/sentinel-backend/internal/config"
 )
@@ -35,7 +37,7 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *SettingsHandler) getSettings(w http.ResponseWriter, r *http.Request) {
 	// Return settings (without sensitive data)
 	safeConfig := h.getSafeConfig()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(safeConfig)
 }
@@ -59,16 +61,131 @@ func (h *SettingsHandler) updateSettings(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "success",
+		"status":  "success",
 		"message": "Settings updated",
 	})
 }
 
+// providerFieldMap maps JSON key names to the struct field names in ProvidersConfig.
+func providerFieldMap() map[string]string {
+	return map[string]string{
+		"usgs":            "USGS",
+		"gdacs":           "GDACS",
+		"opensky":         "OpenSky",
+		"noaa_cap":        "NOAACAP",
+		"openmeteo":       "OpenMeteo",
+		"gdelt":           "GDELT",
+		"celestrak":       "Celestrak",
+		"swpc":            "SWPC",
+		"who":             "WHO",
+		"promed":          "ProMED",
+		"airplanes_live":  "AirplanesLive",
+		"nasa_firms":      "NASAFIRMS",
+		"piracy_imb":      "PiracyIMB",
+		"israel_alerts":   "IsraelAlerts",
+		"reliefweb":       "ReliefWeb",
+		"vix":             "VIX",
+		"oil_price":       "OilPrice",
+		"crypto":          "Crypto",
+		"sec_edgar":       "SECEdgar",
+		"ofac_sdn":        "OFACSDN",
+		"treasury_yields": "TreasuryYields",
+		"news_rss":        "NewsRSS",
+		"iran_conflict":   "IranConflict",
+		"isw":             "ISW",
+	}
+}
+
+// keysFieldMap maps JSON key names to the struct field names in KeysConfig.
+func keysFieldMap() map[string]string {
+	return map[string]string{
+		"adsbexchange":  "Adsbexchange",
+		"aisstream":     "Aisstream",
+		"acled":         "Acled",
+		"openweather":   "Openweather",
+		"nasa":          "Nasa",
+		"spacetrack":    "Spacetrack",
+		"marinetraffic": "Marinetraffic",
+		"vesselfinder":  "Vesselfinder",
+		"n2yo":          "N2yo",
+		"shodan":        "Shodan",
+		"cloudflare":    "Cloudflare",
+		"ukrainealerts": "Ukrainealerts",
+		"alpha_vantage": "AlphaVantage",
+		"finnhub":       "Finnhub",
+		"fred":          "Fred",
+		"polygon":       "Polygon",
+	}
+}
+
+// getProviderConfig reads a ProviderConfig from ProvidersConfig by JSON key name using reflection.
+func getProviderConfig(providers *config.ProvidersConfig, jsonKey string) (config.ProviderConfig, bool) {
+	fm := providerFieldMap()
+	fieldName, ok := fm[jsonKey]
+	if !ok {
+		return config.ProviderConfig{}, false
+	}
+	v := reflect.ValueOf(providers).Elem()
+	f := v.FieldByName(fieldName)
+	if !f.IsValid() {
+		return config.ProviderConfig{}, false
+	}
+	return f.Interface().(config.ProviderConfig), true
+}
+
+// setProviderConfig writes a ProviderConfig into ProvidersConfig by JSON key name using reflection.
+func setProviderConfig(providers *config.ProvidersConfig, jsonKey string, pc config.ProviderConfig) bool {
+	fm := providerFieldMap()
+	fieldName, ok := fm[jsonKey]
+	if !ok {
+		return false
+	}
+	v := reflect.ValueOf(providers).Elem()
+	f := v.FieldByName(fieldName)
+	if !f.IsValid() || !f.CanSet() {
+		return false
+	}
+	f.Set(reflect.ValueOf(pc))
+	return true
+}
+
 // getSafeConfig returns config without sensitive data
 func (h *SettingsHandler) getSafeConfig() map[string]interface{} {
-	// Convert config to map for safe serialization
-	// In a real implementation, this would redact sensitive fields
+	// Build providers map with all providers
+	providersMap := make(map[string]interface{})
+	for jsonKey := range providerFieldMap() {
+		pc, ok := getProviderConfig(&h.config.Providers, jsonKey)
+		if !ok {
+			continue
+		}
+		opts := pc.Options
+		if opts == nil {
+			opts = map[string]string{}
+		}
+		providersMap[jsonKey] = map[string]interface{}{
+			"enabled":          pc.Enabled,
+			"interval_seconds": pc.IntervalSeconds,
+			"options":          opts,
+		}
+	}
+
+	// Build keys_configured map — shows which keys are set without exposing values
+	keysConfigured := make(map[string]bool)
+	keysVal := reflect.ValueOf(&h.config.Keys).Elem()
+	for jsonKey, fieldName := range keysFieldMap() {
+		f := keysVal.FieldByName(fieldName)
+		if f.IsValid() {
+			keysConfigured[jsonKey] = f.String() != ""
+		}
+	}
+
+	serverURL := fmt.Sprintf("http://%s:%d", h.config.Server.Host, h.config.Server.Port)
+	if h.config.Server.TLSEnabled {
+		serverURL = fmt.Sprintf("https://%s:%d", h.config.Server.Host, h.config.Server.Port)
+	}
+
 	data := map[string]interface{}{
+		"server_url":      serverURL,
 		"version":         h.config.Version,
 		"setup_complete":  h.config.SetupComplete,
 		"data_dir":        h.config.DataDir,
@@ -76,49 +193,29 @@ func (h *SettingsHandler) getSafeConfig() map[string]interface{} {
 		"auto_open_browser": h.config.AutoOpenBrowser,
 		"check_for_updates": h.config.CheckForUpdates,
 		"server": map[string]interface{}{
-			"port":        h.config.Server.Port,
-			"host":        h.config.Server.Host,
-			"tls_enabled": h.config.Server.TLSEnabled,
+			"port":         h.config.Server.Port,
+			"host":         h.config.Server.Host,
+			"tls_enabled":  h.config.Server.TLSEnabled,
 			"auth_enabled": h.config.Server.AuthEnabled,
 		},
 		"ui": map[string]interface{}{
-			"default_view":          h.config.UI.DefaultView,
-			"default_preset":        h.config.UI.DefaultPreset,
-			"data_retention_days":   h.config.UI.DataRetentionDays,
-			"sound_enabled":         h.config.UI.SoundEnabled,
-			"sound_volume":          h.config.UI.SoundVolume,
-			"ticker_enabled":        h.config.UI.TickerEnabled,
-			"ticker_speed":          h.config.UI.TickerSpeed,
-			"ticker_min_severity":   h.config.UI.TickerMinSeverity,
+			"default_view":        h.config.UI.DefaultView,
+			"default_preset":      h.config.UI.DefaultPreset,
+			"data_retention_days": h.config.UI.DataRetentionDays,
+			"sound_enabled":       h.config.UI.SoundEnabled,
+			"sound_volume":        h.config.UI.SoundVolume,
+			"ticker_enabled":      h.config.UI.TickerEnabled,
+			"ticker_speed":        h.config.UI.TickerSpeed,
+			"ticker_min_severity": h.config.UI.TickerMinSeverity,
 		},
 		"location": map[string]interface{}{
-			"lat":       h.config.Location.Lat,
-			"lon":       h.config.Location.Lon,
-			"timezone":  h.config.Location.Timezone,
-			"set":       h.config.Location.Set,
+			"lat":      h.config.Location.Lat,
+			"lon":      h.config.Location.Lon,
+			"timezone": h.config.Location.Timezone,
+			"set":      h.config.Location.Set,
 		},
-		"providers": map[string]interface{}{
-			"usgs": map[string]interface{}{
-				"enabled":          h.config.Providers.USGS.Enabled,
-				"interval_seconds": h.config.Providers.USGS.IntervalSeconds,
-			},
-			"gdacs": map[string]interface{}{
-				"enabled":          h.config.Providers.GDACS.Enabled,
-				"interval_seconds": h.config.Providers.GDACS.IntervalSeconds,
-			},
-			"opensky": map[string]interface{}{
-				"enabled":          h.config.Providers.OpenSky.Enabled,
-				"interval_seconds": h.config.Providers.OpenSky.IntervalSeconds,
-			},
-			"iran_conflict": map[string]interface{}{
-				"enabled":          h.config.Providers.IranConflict.Enabled,
-				"interval_seconds": h.config.Providers.IranConflict.IntervalSeconds,
-			},
-			"isw": map[string]interface{}{
-				"enabled":          h.config.Providers.ISW.Enabled,
-				"interval_seconds": h.config.Providers.ISW.IntervalSeconds,
-			},
-		},
+		"providers":      providersMap,
+		"keys_configured": keysConfigured,
 	}
 
 	return data
@@ -141,44 +238,91 @@ func (h *SettingsHandler) applyUpdates(update map[string]interface{}) {
 		if view, ok := ui["default_view"].(string); ok {
 			h.config.UI.DefaultView = view
 		}
+		if preset, ok := ui["default_preset"].(string); ok {
+			h.config.UI.DefaultPreset = preset
+		}
+		if days, ok := ui["data_retention_days"].(float64); ok {
+			h.config.UI.DataRetentionDays = int(days)
+		}
 		if soundEnabled, ok := ui["sound_enabled"].(bool); ok {
 			h.config.UI.SoundEnabled = soundEnabled
 		}
 		if volume, ok := ui["sound_volume"].(float64); ok {
 			h.config.UI.SoundVolume = int(volume)
 		}
+		if tickerEnabled, ok := ui["ticker_enabled"].(bool); ok {
+			h.config.UI.TickerEnabled = tickerEnabled
+		}
+		if speed, ok := ui["ticker_speed"].(string); ok {
+			h.config.UI.TickerSpeed = speed
+		}
+		if minSev, ok := ui["ticker_min_severity"].(string); ok {
+			h.config.UI.TickerMinSeverity = minSev
+		}
 	}
 
-	// Apply provider settings
+	// Apply location settings
+	if loc, ok := update["location"].(map[string]interface{}); ok {
+		if lat, ok := loc["lat"].(float64); ok {
+			h.config.Location.Lat = lat
+			h.config.Location.Set = true
+		}
+		if lon, ok := loc["lon"].(float64); ok {
+			h.config.Location.Lon = lon
+			h.config.Location.Set = true
+		}
+		if tz, ok := loc["timezone"].(string); ok {
+			h.config.Location.Timezone = tz
+		}
+	}
+
+	// Apply provider settings — handle ALL providers dynamically
 	if providers, ok := update["providers"].(map[string]interface{}); ok {
-		// USGS
-		if usgs, ok := providers["usgs"].(map[string]interface{}); ok {
-			if enabled, ok := usgs["enabled"].(bool); ok {
-				h.config.Providers.USGS.Enabled = enabled
+		for jsonKey, val := range providers {
+			provUpdate, ok := val.(map[string]interface{})
+			if !ok {
+				continue
 			}
-		}
-		// GDACS
-		if gdacs, ok := providers["gdacs"].(map[string]interface{}); ok {
-			if enabled, ok := gdacs["enabled"].(bool); ok {
-				h.config.Providers.GDACS.Enabled = enabled
+			// Get current config for this provider
+			pc, found := getProviderConfig(&h.config.Providers, jsonKey)
+			if !found {
+				continue
 			}
-		}
-		// OpenSky
-		if opensky, ok := providers["opensky"].(map[string]interface{}); ok {
-			if enabled, ok := opensky["enabled"].(bool); ok {
-				h.config.Providers.OpenSky.Enabled = enabled
+			if enabled, ok := provUpdate["enabled"].(bool); ok {
+				pc.Enabled = enabled
 			}
-		}
-		// Iran Conflict
-		if iranConflict, ok := providers["iran_conflict"].(map[string]interface{}); ok {
-			if enabled, ok := iranConflict["enabled"].(bool); ok {
-				h.config.Providers.IranConflict.Enabled = enabled
+			if interval, ok := provUpdate["interval_seconds"].(float64); ok {
+				pc.IntervalSeconds = int(interval)
 			}
+			if opts, ok := provUpdate["options"].(map[string]interface{}); ok {
+				if pc.Options == nil {
+					pc.Options = make(map[string]string)
+				}
+				for k, v := range opts {
+					if sv, ok := v.(string); ok {
+						pc.Options[k] = sv
+					}
+				}
+			}
+			setProviderConfig(&h.config.Providers, jsonKey, pc)
 		}
-		// ISW
-		if isw, ok := providers["isw"].(map[string]interface{}); ok {
-			if enabled, ok := isw["enabled"].(bool); ok {
-				h.config.Providers.ISW.Enabled = enabled
+	}
+
+	// Apply keys updates — accept key name → key value, save to KeysConfig
+	if keys, ok := update["keys"].(map[string]interface{}); ok {
+		keysVal := reflect.ValueOf(&h.config.Keys).Elem()
+		for jsonKey, val := range keys {
+			keyValue, ok := val.(string)
+			if !ok {
+				continue
+			}
+			fieldName, ok := keysFieldMap()[jsonKey]
+			if !ok {
+				continue
+			}
+			f := keysVal.FieldByName(fieldName)
+			if f.IsValid() && f.CanSet() {
+				f.SetString(keyValue)
 			}
 		}
 	}

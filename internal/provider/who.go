@@ -48,8 +48,8 @@ func NewWHOProvider(config *Config) *WHOProvider {
 
 // Fetch retrieves disease outbreak news from WHO RSS feed
 func (p *WHOProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	// WHO Disease Outbreak News RSS feed
-	url := "https://www.who.int/feeds/entity/csr/don/en/rss.xml"
+	// WHO Disease Outbreak News RSS feed (updated URL)
+	url := "https://www.who.int/rss-feeds/news-english.xml"
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

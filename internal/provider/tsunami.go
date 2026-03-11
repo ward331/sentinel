@@ -46,7 +46,8 @@ func NewTsunamiProvider(config *Config) *TsunamiProvider {
 
 // Fetch retrieves tsunami alerts from PTWC
 func (p *TsunamiProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	url := "https://ptwc.weather.gov/ptwc/ptwc.php?type=rss"
+	// Use the NWS tsunami alerts Atom/RSS feed (PTWC old PHP endpoint no longer works)
+	url := "https://www.tsunami.gov/events/xml/PAAQAtom.xml"
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -66,14 +67,26 @@ func (p *TsunamiProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 		return nil, fmt.Errorf("PTWC RSS returned status %d: %s", resp.StatusCode, string(body))
 	}
 	
-	// Parse RSS feed
-	var rss RSSFeed
-	decoder := xml.NewDecoder(resp.Body)
-	if err := decoder.Decode(&rss); err != nil {
-		return nil, fmt.Errorf("failed to parse RSS feed: %w", err)
+	// Read the full body so we can try multiple parse formats
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
-	return p.convertToEvents(rss)
+
+	// Try parsing as RSS first
+	var rss RSSFeed
+	if err := xml.Unmarshal(body, &rss); err == nil && len(rss.Channel.Items) > 0 {
+		return p.convertToEvents(rss)
+	}
+
+	// Try parsing as Atom feed (tsunami.gov uses Atom format)
+	var atom TsunamiAtomFeed
+	if err := xml.Unmarshal(body, &atom); err == nil && len(atom.Entries) > 0 {
+		return p.convertAtomToEvents(atom)
+	}
+
+	// If both fail, return empty
+	return []*model.Event{}, nil
 }
 
 // convertToEvents converts PTWC RSS feed to SENTINEL events
@@ -370,29 +383,91 @@ func (p *TsunamiProvider) generateBadges(item RSSItem) []model.Badge {
 	return badges
 }
 
+// TsunamiAtomFeed represents an Atom feed structure
+type TsunamiAtomFeed struct {
+	XMLName xml.Name           `xml:"feed"`
+	Title   string             `xml:"title"`
+	Entries []TsunamiAtomEntry `xml:"entry"`
+}
+
+// TsunamiAtomEntry represents an Atom feed entry
+type TsunamiAtomEntry struct {
+	Title   string `xml:"title"`
+	ID      string `xml:"id"`
+	Updated string `xml:"updated"`
+	Summary string `xml:"summary"`
+	Link    struct {
+		Href string `xml:"href,attr"`
+	} `xml:"link"`
+}
+
+// convertAtomToEvents converts Atom feed entries to SENTINEL events
+func (p *TsunamiProvider) convertAtomToEvents(feed TsunamiAtomFeed) ([]*model.Event, error) {
+	var events []*model.Event
+
+	for _, entry := range feed.Entries {
+		// Convert Atom entry to RSSItem to reuse existing logic
+		item := RSSItem{
+			Title:       entry.Title,
+			Link:        entry.Link.Href,
+			Description: entry.Summary,
+			PubDate:     entry.Updated,
+			GUID:        entry.ID,
+		}
+
+		// Only include tsunami-related entries
+		if !p.isTsunamiAlert(item) {
+			continue
+		}
+
+		event := &model.Event{
+			Title:       p.generateTitle(item),
+			Description: p.generateDescription(item),
+			Source:      "ptwc",
+			SourceID:    p.extractSourceID(item),
+			OccurredAt:  p.parsePubDate(item.PubDate),
+			Location:    p.extractLocation(item),
+			Precision:   model.PrecisionApproximate,
+			Magnitude:   p.calculateMagnitude(item),
+			Category:    "tsunami",
+			Severity:    p.determineSeverity(item),
+			Metadata:    p.generateMetadata(item),
+			Badges:      p.generateBadges(item),
+		}
+
+		events = append(events, event)
+	}
+
+	return events, nil
+}
+
 // parsePubDate parses RSS pubDate string
 func (p *TsunamiProvider) parsePubDate(pubDate string) time.Time {
 	if pubDate == "" {
 		return time.Now().UTC()
 	}
 	
-	// Try common RSS date formats
+	// Try common RSS and Atom date formats
 	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
 		time.RFC1123,
 		time.RFC1123Z,
 		"Mon, 02 Jan 2006 15:04:05 MST",
 		"Mon, 02 Jan 2006 15:04:05 -0700",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05-07:00",
 		time.RFC822,
 		time.RFC822Z,
 	}
-	
+
 	for _, format := range formats {
 		t, err := time.Parse(format, pubDate)
 		if err == nil {
 			return t.UTC()
 		}
 	}
-	
+
 	return time.Now().UTC()
 }
 

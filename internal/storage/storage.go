@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"path/filepath"
 	"time"
 
@@ -427,17 +428,19 @@ func (s *Storage) ListEvents(ctx context.Context, filter ListFilter) ([]model.Ev
 
 // ListFilter defines filtering options for listing events
 type ListFilter struct {
-	Source       string
-	Category     string
-	Severity     string
-	MinMagnitude float64
-	MaxMagnitude float64
-	StartTime    time.Time
-	EndTime      time.Time
-	BBox         []float64 // [min_lon, min_lat, max_lon, max_lat]
-	Query        string    // Full-text search query
-	Limit        int
-	Offset       int
+	Source          string
+	Category        string
+	Severity        string
+	ExcludeCategory string // Comma-separated categories to exclude
+	ExcludeSource   string // Comma-separated sources to exclude
+	MinMagnitude    float64
+	MaxMagnitude    float64
+	StartTime       time.Time
+	EndTime         time.Time
+	BBox            []float64 // [min_lon, min_lat, max_lon, max_lat]
+	Query           string    // Full-text search query
+	Limit           int
+	Offset          int
 }
 
 func buildWhereClause(filter ListFilter) (string, []interface{}) {
@@ -457,6 +460,26 @@ func buildWhereClause(filter ListFilter) (string, []interface{}) {
 	if filter.Severity != "" {
 		conditions = append(conditions, "e.severity = ?")
 		args = append(args, filter.Severity)
+	}
+
+	if filter.ExcludeCategory != "" {
+		parts := strings.Split(filter.ExcludeCategory, ",")
+		placeholders := make([]string, len(parts))
+		for i, p := range parts {
+			placeholders[i] = "?"
+			args = append(args, strings.TrimSpace(p))
+		}
+		conditions = append(conditions, fmt.Sprintf("e.category NOT IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	if filter.ExcludeSource != "" {
+		parts := strings.Split(filter.ExcludeSource, ",")
+		placeholders := make([]string, len(parts))
+		for i, p := range parts {
+			placeholders[i] = "?"
+			args = append(args, strings.TrimSpace(p))
+		}
+		conditions = append(conditions, fmt.Sprintf("e.source NOT IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if filter.MinMagnitude > 0 {
@@ -538,6 +561,26 @@ func buildFTSWhereClause(filter ListFilter) (string, []interface{}) {
 	if filter.Severity != "" {
 		conditions = append(conditions, "e.severity = ?")
 		args = append(args, filter.Severity)
+	}
+
+	if filter.ExcludeCategory != "" {
+		parts := strings.Split(filter.ExcludeCategory, ",")
+		placeholders := make([]string, len(parts))
+		for i, p := range parts {
+			placeholders[i] = "?"
+			args = append(args, strings.TrimSpace(p))
+		}
+		conditions = append(conditions, fmt.Sprintf("e.category NOT IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	if filter.ExcludeSource != "" {
+		parts := strings.Split(filter.ExcludeSource, ",")
+		placeholders := make([]string, len(parts))
+		for i, p := range parts {
+			placeholders[i] = "?"
+			args = append(args, strings.TrimSpace(p))
+		}
+		conditions = append(conditions, fmt.Sprintf("e.source NOT IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if filter.MinMagnitude > 0 {

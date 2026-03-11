@@ -1,0 +1,9 @@
+{
+  "allowed": [
+    {
+      "telegram_id": "8177356632",
+      "name": "Ed",
+      "role": "admin"
+    }
+  ]
+}

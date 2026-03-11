@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SENTINEL V3</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0a0e17; color:#e0e6ed; font-family:system-ui,-apple-system,sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
+    .loader { text-align:center; }
+    .loader h1 { font-size:2.4rem; letter-spacing:.3rem; margin-bottom:.5rem; }
+    .loader p  { color:#6b7a8d; font-size:.95rem; }
+    .bar { width:200px; height:3px; background:#1a2233; margin:1.2rem auto 0; border-radius:2px; overflow:hidden; }
+    .bar::after { content:''; display:block; width:40%; height:100%; background:#3b82f6; animation:slide 1.2s ease-in-out infinite; }
+    @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <h1>SENTINEL V3</h1>
+    <p>Loading...</p>
+    <div class="bar"></div>
+  </div>
+</body>
+</html>

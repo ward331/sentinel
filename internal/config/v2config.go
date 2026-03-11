@@ -33,6 +33,10 @@ type Config struct {
 	WeeklyDigest    WeeklyDigestConfig    `json:"weekly_digest"`
 	UI              UIConfig              `json:"ui"`
 	Location        LocationConfig        `json:"location"`
+
+	// V3 additions
+	SignalBoard    SignalBoardConfig    `json:"signal_board,omitempty"`
+	EntityTracking EntityTrackingConfig `json:"entity_tracking,omitempty"`
 }
 
 type ServerConfig struct {
@@ -120,8 +124,9 @@ type KeysConfig struct {
 }
 
 type ProviderConfig struct {
-	Enabled         bool `json:"enabled"`
-	IntervalSeconds int  `json:"interval_seconds"`
+	Enabled         bool              `json:"enabled"`
+	IntervalSeconds int               `json:"interval_seconds"`
+	Options         map[string]string `json:"options,omitempty"`
 }
 
 type ProvidersConfig struct {
@@ -211,8 +216,20 @@ type UIConfig struct {
 type LocationConfig struct {
 	Lat      float64 `json:"lat"`
 	Lon      float64 `json:"lon"`
+	RadiusKm float64 `json:"radius_km,omitempty"` // proximity alert radius
 	Timezone string  `json:"timezone"`
 	Set      bool    `json:"set"`
+}
+
+// SignalBoardConfig controls the domain threat-level dashboard
+type SignalBoardConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// EntityTrackingConfig controls aircraft/vessel dead-reckoning
+type EntityTrackingConfig struct {
+	Enabled           bool `json:"enabled"`
+	DeadReckoningMins int  `json:"dead_reckoning_mins,omitempty"`
 }
 
 // DefaultConfig returns a default configuration

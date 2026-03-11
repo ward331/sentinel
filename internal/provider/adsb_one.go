@@ -56,8 +56,12 @@ func (p *ADSBOneProvider) Interval() time.Duration {
 }
 
 func (p *ADSBOneProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	// ADSB.one provides worldwide coverage
-	url := "https://api.adsb.one/v2/aircraft"
+	// ADSB.one point query — /v2/point/{lat}/{lon}/{radius_nm}
+	// Default to NYC area with 250 NM radius
+	lat := 40.6413
+	lon := -73.7781
+	radiusNM := 250
+	url := fmt.Sprintf("https://api.adsb.one/v2/point/%f/%f/%d", lat, lon, radiusNM)
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

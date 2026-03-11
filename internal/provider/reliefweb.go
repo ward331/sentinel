@@ -95,10 +95,7 @@ func (p *ReliefWebProvider) Name() string {
 
 // Enabled returns whether the provider is enabled
 func (p *ReliefWebProvider) Enabled() bool {
-	if p.config != nil {
-		return p.config.Enabled
-	}
-	return true
+	return false // Requires approved appname registration
 }
 
 
@@ -112,7 +109,8 @@ func (p *ReliefWebProvider) Interval() time.Duration {
 
 func (p *ReliefWebProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 	// ReliefWeb API endpoint for disasters
-	url := "https://api.reliefweb.int/v1/reports?appname=sentinel&profile=full&limit=50&preset=latest&filter[field]=date.created&filter[value][from]=now-7d"
+	// Use preset=latest to get recent reports without date filter issues
+	url := "https://api.reliefweb.int/v1/reports?appname=sentinel-watchtower&profile=list&limit=50&preset=latest"
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

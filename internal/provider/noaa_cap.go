@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -56,36 +57,35 @@ func (p *NOAACAPProvider) Interval() time.Duration {
 }
 
 func (p *NOAACAPProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	// NOAA CAP feed for US alerts
-	url := "https://alerts.weather.gov/cap/us.php?x=0"
-	
+	// NWS API v2 — returns GeoJSON, not CAP XML
+	url := "https://api.weather.gov/alerts/active?status=actual"
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NOAA CAP request: %w", err)
 	}
-	
-	req.Header.Set("User-Agent", "SENTINEL/2.0 (https://github.com/ward331/sentinel)")
-	req.Header.Set("Accept", "application/cap+xml, application/xml, text/xml")
-	
+
+	req.Header.Set("User-Agent", "(SENTINEL/2.0, sentinel@example.com)")
+	req.Header.Set("Accept", "application/geo+json")
+
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch NOAA CAP feed: %w", err)
+		return nil, fmt.Errorf("failed to fetch NWS alerts: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("NOAA CAP returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("NWS API returned status %d: %s", resp.StatusCode, string(body))
 	}
-	
-	// Parse CAP XML
-	var capFeed CAPFeed
-	decoder := xml.NewDecoder(resp.Body)
-	if err := decoder.Decode(&capFeed); err != nil {
-		return nil, fmt.Errorf("failed to parse NOAA CAP XML: %w", err)
+
+	// Parse the GeoJSON response
+	var nwsResp NWSAlertResponse
+	if err := json.NewDecoder(resp.Body).Decode(&nwsResp); err != nil {
+		return nil, fmt.Errorf("failed to parse NWS alerts JSON: %w", err)
 	}
-	
-	return p.convertToEvents(capFeed)
+
+	return p.convertNWSToEvents(nwsResp)
 }
 
 // CAPFeed represents a CAP XML feed
@@ -126,6 +126,87 @@ type CAPEntry struct {
 			Value     string `xml:"value"`
 		} `xml:"parameter"`
 	} `xml:"alert"`
+}
+
+// NWSAlertResponse represents the NWS API GeoJSON response
+type NWSAlertResponse struct {
+	Features []NWSFeature `json:"features"`
+}
+
+// NWSFeature represents a single alert feature
+type NWSFeature struct {
+	Properties NWSProperties `json:"properties"`
+}
+
+// NWSProperties represents NWS alert properties
+type NWSProperties struct {
+	ID          string `json:"id"`
+	Event       string `json:"event"`
+	AreaDesc    string `json:"areaDesc"`
+	Headline    string `json:"headline"`
+	Description string `json:"description"`
+	Severity    string `json:"severity"`
+	Urgency     string `json:"urgency"`
+	Certainty   string `json:"certainty"`
+	Category    string `json:"category"`
+	Status      string `json:"status"`
+	MessageType string `json:"messageType"`
+	Sender      string `json:"senderName"`
+	Sent        string `json:"sent"`
+	Effective   string `json:"effective"`
+	Expires     string `json:"expires"`
+}
+
+// convertNWSToEvents converts NWS API GeoJSON alerts to SENTINEL events
+func (p *NOAACAPProvider) convertNWSToEvents(resp NWSAlertResponse) ([]*model.Event, error) {
+	var events []*model.Event
+
+	for _, feature := range resp.Features {
+		props := feature.Properties
+		if props.Status == "Test" {
+			continue
+		}
+
+		// Build a CAPEntry-like structure to reuse existing helpers
+		entry := CAPEntry{
+			ID:      props.ID,
+			Title:   props.Headline,
+			Summary: props.Description,
+		}
+		entry.CapAlert.Identifier = props.ID
+		entry.CapAlert.Sender = props.Sender
+		entry.CapAlert.Sent = props.Sent
+		entry.CapAlert.Status = props.Status
+		entry.CapAlert.MsgType = props.MessageType
+		entry.CapAlert.Category = props.Category
+		entry.CapAlert.Event = props.Event
+		entry.CapAlert.Urgency = props.Urgency
+		entry.CapAlert.Severity = props.Severity
+		entry.CapAlert.Certainty = props.Certainty
+		entry.CapAlert.AreaDesc = props.AreaDesc
+
+		event := &model.Event{
+			Title:       p.generateTitle(entry),
+			Description: p.generateDescription(entry),
+			Source:      "noaa_cap",
+			SourceID:    props.ID,
+			OccurredAt:  p.parseTime(props.Sent),
+			Location: model.Location{
+				Type:        "Point",
+				Coordinates: []float64{-95.7129, 37.0902}, // Default US center
+			},
+			Precision: model.PrecisionApproximate,
+			Magnitude: p.calculateMagnitude(entry),
+			Category:  "weather",
+			Severity:  p.determineSeverity(entry),
+			Metadata:  p.generateMetadata(entry),
+			Badges:    p.generateBadges(entry),
+		}
+
+		events = append(events, event)
+	}
+
+	return events, nil
 }
 
 // convertToEvents converts CAP alerts to SENTINEL events

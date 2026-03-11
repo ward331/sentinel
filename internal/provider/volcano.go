@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -48,7 +49,8 @@ func NewVolcanoProvider(config *Config) *VolcanoProvider {
 
 // Fetch retrieves volcanic activity reports from Volcano Discovery RSS
 func (p *VolcanoProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
-	url := "https://www.volcanodiscovery.com/earthquakes/rss/large_quakes_worldwide.rss"
+	// Use the Smithsonian Global Volcanism Program weekly reports RSS feed
+	url := "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml"
 	
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -67,10 +69,26 @@ func (p *VolcanoProvider) Fetch(ctx context.Context) ([]*model.Event, error) {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Volcano Discovery RSS returned status %d: %s", resp.StatusCode, string(body))
 	}
-	
-	// Parse RSS feed
+
+	// Read entire body first so we can handle encoding issues
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read RSS body: %w", err)
+	}
+
+	// Strip invalid UTF-8 and fix encoding declaration
+	bodyStr := strings.ToValidUTF8(string(body), "")
+	bodyStr = strings.Replace(bodyStr, `encoding="ISO-8859-1"`, `encoding="UTF-8"`, 1)
+	bodyStr = strings.Replace(bodyStr, `encoding="iso-8859-1"`, `encoding="UTF-8"`, 1)
+	bodyStr = strings.Replace(bodyStr, `encoding="latin1"`, `encoding="UTF-8"`, 1)
+
+	// Parse RSS feed from the sanitized body
 	var rss RSSFeed
-	decoder := xml.NewDecoder(resp.Body)
+	decoder := xml.NewDecoder(bytes.NewReader([]byte(bodyStr)))
+	decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
+	decoder.Strict = false
 	if err := decoder.Decode(&rss); err != nil {
 		return nil, fmt.Errorf("failed to parse RSS feed: %w", err)
 	}
