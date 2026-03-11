@@ -1,0 +1,28 @@
+[Unit]
+Description=SENTINEL V3 — Real-time Intelligence Monitor
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ed
+WorkingDirectory=/home/ed/.openclaw/workspace-sentinel-backend
+ExecStart=/home/ed/.openclaw/workspace-sentinel-backend/bin/sentinel-linux-amd64 --host 0.0.0.0 --port 8080 --data-dir /home/ed/.openclaw/workspace-sentinel-backend/data
+Restart=always
+RestartSec=5
+Environment=TZ=UTC
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=50%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ed/.openclaw/workspace-sentinel-backend/data
+ReadWritePaths=/home/ed/.openclaw/workspace-sentinel-backend/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

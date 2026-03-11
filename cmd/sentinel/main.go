@@ -18,6 +18,7 @@ import (
 	"github.com/openclaw/sentinel-backend/internal/engine"
 	"github.com/openclaw/sentinel-backend/internal/health"
 	"github.com/openclaw/sentinel-backend/internal/metrics"
+	_ "github.com/openclaw/sentinel-backend/internal/notify"
 	"github.com/openclaw/sentinel-backend/internal/poller"
 	"github.com/openclaw/sentinel-backend/internal/provider"
 	"github.com/openclaw/sentinel-backend/internal/setup"
@@ -286,6 +287,24 @@ func initializePoller(store *storage.Storage, cfg *config.Config) *poller.Poller
 	registerProvider(p, "otx_alienvault", provider.NewOTXAlienVaultProvider())
 	registerProvider(p, "bellingcat", provider.NewBellingcatProvider())
 	registerProvider(p, "isw", provider.NewISWProvider())
+
+	// ── Tier 1 providers (free with API key — disabled if key missing) ──
+	tier1Config := &provider.Config{
+		Enabled:      true,
+		PollInterval: 5 * time.Minute,
+		Options:      make(map[string]string),
+	}
+	registerProvider(p, "adsbexchange", provider.NewADSBExchangeProvider(tier1Config))
+	registerProvider(p, "aisstream", provider.NewAISStreamProvider(tier1Config))
+	registerProvider(p, "acled", provider.NewACLEDProvider(tier1Config))
+	registerProvider(p, "openweathermap", provider.NewOpenWeatherMapProvider(tier1Config))
+	registerProvider(p, "nasa_firms_rt", provider.NewNASAFIRMSRTProvider(tier1Config))
+	registerProvider(p, "spacetrack", provider.NewSpaceTrackProvider(tier1Config))
+	registerProvider(p, "alpha_vantage", provider.NewAlphaVantageProvider(tier1Config))
+	registerProvider(p, "finnhub", provider.NewFinnhubProvider(tier1Config))
+	registerProvider(p, "fred", provider.NewFREDProvider(tier1Config))
+	registerProvider(p, "shodan", provider.NewShodanProvider(tier1Config))
+	registerProvider(p, "abusech", provider.NewAbuseCHProvider(tier1Config))
 
 	return p
 }

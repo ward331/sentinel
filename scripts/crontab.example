@@ -1,0 +1,8 @@
+# SENTINEL V3 — Recommended cron entries
+# Install with: crontab -l | cat - scripts/crontab.example | crontab -
+
+# Health check every 5 minutes
+*/5 * * * * /home/ed/.openclaw/workspace-sentinel-backend/scripts/health-check.sh >> /home/ed/.openclaw/workspace-sentinel-backend/logs/health.log 2>&1
+
+# Database backup daily at 3am
+0 3 * * * /home/ed/.openclaw/workspace-sentinel-backend/scripts/backup.sh >> /home/ed/.openclaw/workspace-sentinel-backend/logs/backup.log 2>&1
