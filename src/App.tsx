@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'  // used by right panel toggle
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { getConfig, clearConfig, fetchEvents, fetchSignalBoard, fetchCorrelations, fetchHealth, sseUrl } from './api/client'
 import { SetupWizard } from './components/Setup/SetupWizard'
 import { Header, type View } from './components/Layout/Header'
 import { EventDetail } from './components/Layout/EventDetail'
 import { EventFeed } from './components/Feed/EventFeed'
 import WorldviewLeftPanel, { type MapStyleKey } from './components/Panels/WorldviewLeftPanel'
+import MaplibreViewer from './components/Map/MaplibreViewer'
 import { ProviderHealth } from './components/Health/ProviderHealth'
 import { AlertRules } from './components/Alerts/AlertRules'
 import { SettingsPage } from './components/Settings/SettingsPage'
@@ -237,9 +238,6 @@ function App() {
     return <SetupWizard onComplete={() => setConfigured(true)} />
   }
 
-  // ─── Map style CSS class ──────────────────────────────────────────
-  const mapFilterClass = mapStyle === 'flir' ? 'map-flir' : mapStyle === 'nvg' ? 'map-nvg' : mapStyle === 'crt' ? 'map-crt' : ''
-
   return (
     <div className="flex flex-col w-full h-full">
       {/* Header */}
@@ -254,13 +252,18 @@ function App() {
         {currentView === 'map' ? (
           <div className="flex-1 relative overflow-hidden">
             {/* Full-screen map area */}
-            <div className={`absolute inset-0 ${mapFilterClass}`}>
-              {/* MaplibreViewer placeholder -- wire your MaplibreViewer component here */}
-              <div className="w-full h-full bg-gray-950 flex items-center justify-center">
-                <span className="text-[10px] font-mono text-gray-700 uppercase tracking-widest">
-                  MAP VIEWPORT -- AWAITING MAPLIBRE VIEWER
-                </span>
-              </div>
+            <div className="absolute inset-0">
+              <MaplibreViewer
+                events={events}
+                liveData={liveData}
+                selectedEvent={selectedEvent}
+                onSelectEvent={handleSelectEvent}
+                flyTo={flyTo}
+                mapStyle={mapStyle}
+                visibleLayers={visibleLayers}
+                correlations={correlations}
+                onMouseMove={setMouseCoords}
+              />
             </div>
 
             {/* Left panel (absolute overlay with own collapse toggle) */}

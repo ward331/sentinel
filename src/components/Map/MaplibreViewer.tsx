@@ -17,6 +17,7 @@ export interface MaplibreViewerProps {
   mapStyle: MapStyleKey
   visibleLayers: Set<string>
   correlations: CorrelationFlash[]
+  onMouseMove?: (coords: [number, number] | null) => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -442,6 +443,7 @@ export default function MaplibreViewer({
   mapStyle,
   visibleLayers,
   correlations,
+  onMouseMove,
 }: MaplibreViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -507,6 +509,10 @@ export default function MaplibreViewer({
       terminatorTimerRef.current = setInterval(() => {
         if (mapRef.current) updateTerminator(mapRef.current)
       }, 60000)
+    })
+
+    map.on('mousemove', (e) => {
+      onMouseMove?.([e.lngLat.lng, e.lngLat.lat])
     })
 
     map.on('error', (e) => {
