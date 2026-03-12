@@ -62,6 +62,32 @@ function useThrottledSSE(enabled: boolean, onEvent: (event: SentinelEvent) => vo
   }, [enabled])
 }
 
+// ─── Region name lookup for correlations ─────────────────────────────
+const REGION_COORDS: [string, number, number][] = [
+  ['Middle East', 32, 44], ['Ukraine', 48.4, 31.2], ['Russia', 61.5, 105.3],
+  ['China', 35.9, 104.2], ['Iran', 32.4, 53.7], ['Israel/Palestine', 31.5, 34.9],
+  ['Syria', 35, 38.5], ['Iraq', 33.2, 43.7], ['Afghanistan', 33.9, 67.7],
+  ['Pakistan', 30.4, 69.3], ['India', 20.6, 79], ['Japan', 36.2, 138.3],
+  ['North Korea', 40.3, 127.5], ['South Korea', 35.9, 127.8], ['Taiwan', 23.7, 121],
+  ['Philippines', 12.9, 121.8], ['Turkey', 39.9, 32.9], ['Saudi Arabia', 23.9, 45.1],
+  ['Yemen', 15.6, 48.5], ['Somalia', 5.2, 46.2], ['Nigeria', 9.1, 8.7],
+  ['Ethiopia', 9.1, 40.5], ['Sudan', 12.9, 30.2], ['Libya', 26.3, 17.2],
+  ['Egypt', 26.8, 30.8], ['United States', 39.8, -98.6], ['Mexico', 23.6, -102.6],
+  ['Brazil', -14.2, -51.9], ['Germany', 51.2, 10.5], ['France', 46.2, 2.2],
+  ['UK', 55.4, -3.4], ['Poland', 51.9, 19.1], ['South Africa', -30.6, 22.9],
+  ['Indonesia', -0.8, 113.9], ['Australia', -25.3, 133.8], ['Canada', 56.1, -106.3],
+]
+
+function _findRegionName(lat: number, lon: number): string {
+  let best = 'Unknown Region'
+  let bestDist = Infinity
+  for (const [name, rlat, rlon] of REGION_COORDS) {
+    const d = Math.sqrt((lat - rlat) ** 2 + (lon - rlon) ** 2)
+    if (d < bestDist) { bestDist = d; best = name }
+  }
+  return best
+}
+
 // ─── Main App ───────────────────────────────────────────────────────────
 function App() {
   // Data sources
@@ -104,7 +130,8 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setIsConnected(false)
+          // Go backend is down — mark connected based on Python data availability
+          setIsConnected(!!liveData)
           setLoading(false)
         }
       }
@@ -115,39 +142,104 @@ function App() {
     return () => { cancelled = true; clearInterval(timer) }
   }, [configured, filters])
 
-  // ─── Poll signal board (30s) ──────────────────────────────────────
+  // ─── Generate signal board from live data (no Go backend needed) ──
   useEffect(() => {
-    if (!configured) return
-    let cancelled = false
+    if (!liveData) return
 
-    const load = async () => {
-      try {
-        const data = await fetchSignalBoard()
-        if (!cancelled) setSignalBoard(data)
-      } catch { /* ignore */ }
+    // Compute threat levels from actual data
+    const militaryFlights = liveData.military_flights?.length || 0
+    const gdeltConflicts = liveData.gdelt?.length || 0
+    const earthquakes = liveData.earthquakes || []
+    const bigQuakes = earthquakes.filter(e => e.mag >= 5).length
+    const fires = liveData.firms_fires?.length || 0
+
+    // Military: based on military flights + GDELT conflict articles
+    const milScore = Math.min(5, Math.floor(
+      (militaryFlights > 50 ? 2 : militaryFlights > 20 ? 1 : 0) +
+      (gdeltConflicts > 100 ? 3 : gdeltConflicts > 50 ? 2 : gdeltConflicts > 10 ? 1 : 0)
+    ))
+    // Cyber: moderate baseline (no direct data source)
+    const cyberScore = 1
+    // Financial: from Fear & Greed index
+    const fgi = liveData.financial?.fear_greed_index
+    const finScore = fgi !== undefined && fgi !== null
+      ? (fgi < 20 ? 4 : fgi < 35 ? 3 : fgi < 50 ? 2 : fgi < 65 ? 1 : 0)
+      : 1
+    // Natural: earthquakes + fires
+    const natScore = Math.min(5, Math.floor(
+      (bigQuakes >= 3 ? 3 : bigQuakes >= 1 ? 2 : 0) +
+      (fires > 3000 ? 2 : fires > 1000 ? 1 : 0)
+    ))
+    // Health: baseline nominal
+    const healthScore = 0
+
+    setSignalBoard({
+      military: milScore,
+      cyber: cyberScore,
+      financial: finScore,
+      natural: natScore,
+      health: healthScore,
+      calculated_at: new Date().toISOString(),
+      active_alerts: gdeltConflicts,
+      active_correlations: 0,
+    })
+  }, [liveData])
+
+  // ─── Generate correlations from GDELT + news geo-data ─────────────
+  useEffect(() => {
+    if (!liveData) return
+
+    // Cluster GDELT events by proximity to generate correlations
+    const geoEvents = [
+      ...(liveData.gdelt || []).filter(g => g.lat !== 0 && g.lon !== 0),
+    ]
+    const newsWithGeo = (liveData.news || []).filter(n => n.lat && n.lon)
+
+    // Simple region-based clustering
+    const regions: Record<string, { lat: number; lon: number; events: number; sources: Set<string>; name: string }> = {}
+
+    for (const evt of geoEvents) {
+      // Round to 5-degree grid for clustering
+      const gridKey = `${Math.round(evt.lat / 5) * 5},${Math.round(evt.lon / 5) * 5}`
+      if (!regions[gridKey]) {
+        // Find nearest country name
+        const name = _findRegionName(evt.lat, evt.lon)
+        regions[gridKey] = { lat: evt.lat, lon: evt.lon, events: 0, sources: new Set(), name }
+      }
+      regions[gridKey].events++
+      if (evt.domain) regions[gridKey].sources.add(evt.domain)
     }
 
-    load()
-    const timer = setInterval(load, 30000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [configured])
-
-  // ─── Poll correlations (30s) ──────────────────────────────────────
-  useEffect(() => {
-    if (!configured) return
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const res = await fetchCorrelations()
-        if (!cancelled) setCorrelations(res.correlations || [])
-      } catch { /* ignore */ }
+    for (const n of newsWithGeo) {
+      const gridKey = `${Math.round(n.lat! / 5) * 5},${Math.round(n.lon! / 5) * 5}`
+      if (!regions[gridKey]) {
+        regions[gridKey] = { lat: n.lat!, lon: n.lon!, events: 0, sources: new Set(), name: _findRegionName(n.lat!, n.lon!) }
+      }
+      regions[gridKey].events++
+      if (n.source) regions[gridKey].sources.add(n.source)
     }
 
-    load()
-    const timer = setInterval(load, 30000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [configured])
+    // Convert to correlations (only regions with 3+ events)
+    const corrs: CorrelationFlash[] = Object.entries(regions)
+      .filter(([, r]) => r.events >= 3)
+      .sort((a, b) => b[1].events - a[1].events)
+      .slice(0, 20)
+      .map(([key, r], i) => ({
+        id: i + 1,
+        region_name: r.name,
+        lat: r.lat,
+        lon: r.lon,
+        radius_km: 250,
+        event_count: r.events,
+        source_count: r.sources.size,
+        started_at: new Date(Date.now() - 3600000).toISOString(),
+        last_event_at: new Date().toISOString(),
+        confirmed: r.events >= 10,
+        incident_name: r.events >= 10 ? `${r.name} Activity Cluster` : '',
+      }))
+
+    setCorrelations(corrs)
+  }, [liveData])
 
   // ─── Poll health (30s) ────────────────────────────────────────────
   useEffect(() => {
@@ -158,7 +250,23 @@ function App() {
       try {
         const data = await fetchHealth()
         if (!cancelled) setHealth(data)
-      } catch { /* ignore */ }
+      } catch {
+        // Try Python backend health instead
+        try {
+          const res = await fetch(`${DATA_FETCHER_BASE}/health`)
+          const pyHealth = await res.json()
+          if (!cancelled) {
+            setHealth({
+              status: pyHealth.status === 'operational' ? 'healthy' : 'degraded',
+              version: 'v4.0.1',
+              uptime: pyHealth.uptime || '',
+            } as HealthResponse)
+            setIsConnected(true)
+          }
+        } catch {
+          if (!cancelled) setIsConnected(false)
+        }
+      }
     }
 
     load()

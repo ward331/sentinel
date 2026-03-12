@@ -182,6 +182,7 @@ def fetch_flights() -> None:
     """Fetch military + commercial aircraft positions."""
     try:
         aircraft = []
+        seen_icao: set[str] = set()
 
         # Military aircraft from adsb.lol LADD feed
         mil_data = fetch_json("https://api.adsb.lol/v2/ladd", timeout=12)
@@ -191,8 +192,11 @@ def fetch_flights() -> None:
                 lon = ac.get("lon")
                 if lat is None or lon is None:
                     continue
+                icao = ac.get("hex", "")
+                if icao:
+                    seen_icao.add(icao)
                 aircraft.append({
-                    "icao": ac.get("hex", ""),
+                    "icao": icao,
                     "callsign": (ac.get("flight") or "").strip(),
                     "lat": round(float(lat), 4),
                     "lon": round(float(lon), 4),
@@ -204,58 +208,69 @@ def fetch_flights() -> None:
                     "squawk": ac.get("squawk", ""),
                 })
 
-        # Commercial aircraft from OpenSky
-        opensky_headers = {}
-        osu = os.environ.get("OPENSKY_USER", "")
-        osp = os.environ.get("OPENSKY_PASS", "")
-        opensky_url = "https://opensky-network.org/api/states/all"
-        if osu and osp:
-            import base64
-            creds = base64.b64encode(f"{osu}:{osp}".encode()).decode()
-            opensky_headers["Authorization"] = f"Basic {creds}"
-
-        os_data = fetch_json(opensky_url, timeout=15, headers=opensky_headers)
-        if os_data and "states" in os_data:
-            for s in os_data["states"][:4000]:
-                if s[6] is None or s[5] is None:
+        # Commercial/private aircraft from adsb.lol regional queries (no auth needed)
+        # Cover major regions for global-ish coverage
+        _REGIONS = [
+            (40, -74, 500),   # US East
+            (37, -122, 500),  # US West
+            (41, -87, 500),   # US Central
+            (51, 0, 500),     # Europe West
+            (50, 15, 500),    # Europe Central
+            (55, 37, 500),    # Russia/Moscow
+            (35, 139, 500),   # Japan/East Asia
+            (1, 104, 500),    # SE Asia
+            (25, 55, 500),    # Middle East
+            (-33, 151, 500),  # Australia
+        ]
+        for rlat, rlon, rdist in _REGIONS:
+            try:
+                region_data = fetch_json(
+                    f"https://api.adsb.lol/v2/lat/{rlat}/lon/{rlon}/dist/{rdist}",
+                    timeout=10,
+                )
+                if not region_data or "ac" not in region_data:
                     continue
-                try:
-                    lat = float(s[6])
-                    lon = float(s[5])
-                except (TypeError, ValueError):
-                    continue
-                callsign = (s[1] or "").strip()
-                # Simple classification
-                cat = "commercial"
-                if callsign:
-                    cs_upper = callsign.upper()
-                    if any(p in cs_upper for p in ["RCH", "DUKE", "EVAC", "NAVY", "AIR FORCE",
-                                                    "FORTE", "JAKE", "HOMER", "TEAL", "ANVIL",
-                                                    "DRACO", "VIPER"]):
-                        cat = "military"
-                    elif any(p in cs_upper for p in ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9"]):
-                        if len(callsign) <= 6:
-                            cat = "private"
+                for ac in region_data["ac"]:
+                    lat = ac.get("lat")
+                    lon = ac.get("lon")
+                    if lat is None or lon is None:
+                        continue
+                    icao = ac.get("hex", "")
+                    if icao in seen_icao:
+                        continue
+                    seen_icao.add(icao)
+                    callsign = (ac.get("flight") or "").strip()
+                    cat = "commercial"
+                    if callsign:
+                        cs_upper = callsign.upper()
+                        if any(p in cs_upper for p in ["RCH", "DUKE", "EVAC", "NAVY", "AIR FORCE",
+                                                        "FORTE", "JAKE", "HOMER", "TEAL", "ANVIL",
+                                                        "DRACO", "VIPER"]):
+                            cat = "military"
+                        elif any(p in cs_upper for p in ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9"]):
+                            if len(callsign) <= 6:
+                                cat = "private"
+                    aircraft.append({
+                        "icao": icao,
+                        "callsign": callsign,
+                        "lat": round(float(lat), 4),
+                        "lon": round(float(lon), 4),
+                        "alt_ft": ac.get("alt_baro", 0) if ac.get("alt_baro") != "ground" else 0,
+                        "speed_kts": ac.get("gs", 0),
+                        "heading": ac.get("track", 0),
+                        "on_ground": ac.get("alt_baro") == "ground",
+                        "category": cat,
+                        "squawk": ac.get("squawk", ""),
+                    })
+            except Exception:
+                continue  # skip failed regions
 
-                aircraft.append({
-                    "icao": s[0] or "",
-                    "callsign": callsign,
-                    "lat": round(lat, 4),
-                    "lon": round(lon, 4),
-                    "alt_ft": round((s[7] or 0) * 3.28084),  # meters to feet
-                    "speed_kts": round((s[9] or 0) * 1.944),  # m/s to knots
-                    "heading": round(s[10] or 0, 1),
-                    "on_ground": bool(s[8]),
-                    "category": cat,
-                    "squawk": s[14] if len(s) > 14 and s[14] else "",
-                })
-
-        # Deduplicate by ICAO
-        seen_icao = set()
+        # Deduplicate by ICAO (seen_icao already tracks military + regional)
         deduped = []
+        final_seen: set[str] = set()
         for ac in aircraft:
-            if ac["icao"] and ac["icao"] not in seen_icao:
-                seen_icao.add(ac["icao"])
+            if ac["icao"] and ac["icao"] not in final_seen:
+                final_seen.add(ac["icao"])
                 deduped.append(ac)
             elif not ac["icao"]:
                 deduped.append(ac)
@@ -532,40 +547,48 @@ def fetch_fires() -> None:
 
 
 def fetch_gdelt() -> None:
-    """Fetch conflict/military events from GDELT GeoJSON API."""
+    """Fetch conflict/military events from GDELT v2 Article API (geo endpoint is dead)."""
     try:
+        # Use v2 doc API — artlist mode returns articles with metadata
         data = fetch_json(
-            "https://api.gdeltproject.org/api/v2/geo/geo",
+            "https://api.gdeltproject.org/api/v2/doc/doc",
             params={
-                "query": "conflict OR military OR attack",
-                "format": "GeoJSON",
-                "MAXROWS": "500",
-                "TIMESPAN": "480",
+                "query": "(conflict OR military OR attack OR airstrike OR missile)",
+                "mode": "artlist",
+                "maxrecords": "250",
+                "format": "json",
+                "timespan": "24h",
+                "sourcelang": "English",
             },
             timeout=20,
         )
-        if not data or "features" not in data:
+        if not data or "articles" not in data:
             return
 
         events = []
-        for f in data["features"]:
-            props = f.get("properties", {})
-            coords = f.get("geometry", {}).get("coordinates", [])
-            if len(coords) < 2:
+        for art in data["articles"]:
+            title = art.get("title", "")
+            if not title:
                 continue
+            # Geocode from title text since article API has no coordinates
+            lat, lon = _geocode_text(title)
+            if lat is None:
+                lat, lon = 0, 0
             events.append({
-                "title": props.get("name", props.get("html", ""))[:300],
-                "lat": round(coords[1], 3),
-                "lon": round(coords[0], 3),
-                "tone": props.get("tonez", props.get("tone", 0)),
-                "url": props.get("url", props.get("shareimage", "")),
-                "domain": props.get("domain", ""),
-                "date": props.get("dateadded", ""),
+                "title": title[:300],
+                "lat": lat,
+                "lon": lon,
+                "tone": 0,
+                "url": art.get("url", ""),
+                "domain": art.get("domain", ""),
+                "date": art.get("seendate", ""),
+                "source_country": art.get("sourcecountry", ""),
+                "language": art.get("language", ""),
             })
 
         latest_data["gdelt"] = events
         source_timestamps["gdelt"] = datetime.now(timezone.utc).isoformat()
-        logger.info("GDELT: %d events", len(events))
+        logger.info("GDELT: %d conflict articles", len(events))
 
     except Exception as e:
         logger.error("fetch_gdelt error: %s", e, exc_info=True)
@@ -719,60 +742,65 @@ def fetch_kiwisdr() -> None:
     try:
         text = fetch_text("http://rx.linkfanel.net/kiwisdr_com.js", timeout=15)
         if not text:
-            # Try alternate source
             text = fetch_text("http://kiwisdr.com/public/", timeout=15)
         if not text:
             return
 
         receivers = []
 
-        # The kiwisdr_com.js file contains JavaScript with receiver data
-        # Try to extract JSON-like structures
-        # Pattern: entries typically have lat, lon, name, url fields
-        # Try regex extraction for coordinate pairs
-        entries = re.findall(
-            r'"([^"]+)"[^{]*\{[^}]*"gps":\s*"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)"[^}]*"url":\s*"([^"]*)"',
-            text,
-        )
-        if entries:
-            for name, lat_s, lon_s, url in entries[:500]:
-                try:
+        # The kiwisdr_com.js file is JavaScript with JSON array of objects.
+        # Each entry has: "name":"...", "gps":"(lat, lon)", "url":"...", "users":"N", "users_max":"N"
+        # Strip the JS wrapper to get the JSON array
+        json_start = text.find("[")
+        json_end = text.rfind("]")
+        if json_start >= 0 and json_end > json_start:
+            try:
+                json_str = text[json_start:json_end + 1]
+                # Remove trailing commas before ] (JS allows them, JSON doesn't)
+                json_str = re.sub(r",\s*]", "]", json_str)
+                entries = json.loads(json_str)
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    gps_str = entry.get("gps", "")
+                    name = entry.get("name", "")
+                    url = entry.get("url", "")
+                    if not gps_str or not name:
+                        continue
+                    # Parse "(lat, lon)" format
+                    gps_match = re.match(r"\((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)", gps_str)
+                    if not gps_match:
+                        continue
+                    try:
+                        lat = float(gps_match.group(1))
+                        lon = float(gps_match.group(2))
+                    except ValueError:
+                        continue
+                    users = 0
+                    try:
+                        users = int(entry.get("users", 0))
+                    except (ValueError, TypeError):
+                        pass
+                    # Only include active receivers
+                    if entry.get("offline") == "yes":
+                        continue
                     receivers.append({
-                        "name": name,
-                        "lat": round(float(lat_s), 3),
-                        "lon": round(float(lon_s), 3),
+                        "name": name[:120],
+                        "lat": round(lat, 3),
+                        "lon": round(lon, 3),
                         "url": url,
                         "bands": "0-30 MHz",
-                        "users_active": 0,
+                        "users_active": users,
                     })
-                except ValueError:
-                    continue
-        else:
-            # Alternative parsing: look for lat/lon patterns in any format
-            coord_matches = re.findall(
-                r'"name":\s*"([^"]+)".*?"lat":\s*(-?\d+\.?\d*).*?"lon":\s*(-?\d+\.?\d*)',
-                text,
-                re.DOTALL,
-            )
-            for name, lat_s, lon_s in coord_matches[:500]:
-                try:
-                    receivers.append({
-                        "name": name,
-                        "lat": round(float(lat_s), 3),
-                        "lon": round(float(lon_s), 3),
-                        "url": "",
-                        "bands": "0-30 MHz",
-                        "users_active": 0,
-                    })
-                except ValueError:
-                    continue
+            except json.JSONDecodeError:
+                logger.warning("KiwiSDR: failed to parse JSON from JS file")
 
         if receivers:
-            latest_data["kiwisdr"] = receivers
+            latest_data["kiwisdr"] = receivers[:1000]
             source_timestamps["kiwisdr"] = datetime.now(timezone.utc).isoformat()
             logger.info("KiwiSDR: %d receivers", len(receivers))
         else:
-            logger.warning("KiwiSDR: no receivers parsed from response")
+            logger.warning("KiwiSDR: no receivers parsed from response (%d bytes)", len(text))
 
     except Exception as e:
         logger.error("fetch_kiwisdr error: %s", e, exc_info=True)

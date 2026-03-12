@@ -15,19 +15,19 @@ const LAYER_LEGENDS: Record<string, { title: string; entries: LegendEntry[] }> =
   aircraft: {
     title: 'AIRCRAFT',
     entries: [
-      { label: 'Commercial', color: '#3b82f6', shape: 'circle' },
+      { label: 'Commercial', color: '#06b6d4', shape: 'circle' },
       { label: 'Military', color: '#ef4444', shape: 'diamond' },
-      { label: 'Private', color: '#a855f7', shape: 'circle' },
+      { label: 'Private', color: '#f59e0b', shape: 'circle' },
     ],
   },
   ships: {
     title: 'VESSELS',
     entries: [
-      { label: 'Cargo', color: '#06b6d4', shape: 'square' },
+      { label: 'Cargo', color: '#3b82f6', shape: 'square' },
       { label: 'Tanker', color: '#f97316', shape: 'square' },
       { label: 'Military', color: '#ef4444', shape: 'diamond' },
-      { label: 'Passenger', color: '#22c55e', shape: 'square' },
-      { label: 'Fishing', color: '#eab308', shape: 'circle' },
+      { label: 'Passenger', color: '#ffffff', shape: 'square' },
+      { label: 'Fishing', color: '#22c55e', shape: 'circle' },
     ],
   },
   events: {
@@ -52,9 +52,12 @@ const LAYER_LEGENDS: Record<string, { title: string; entries: LegendEntry[] }> =
     title: 'SATELLITES',
     entries: [
       { label: 'Military/Recon', color: '#ef4444', shape: 'diamond' },
-      { label: 'SIGINT', color: '#10b981', shape: 'diamond' },
+      { label: 'SIGINT', color: '#ffffff', shape: 'diamond' },
+      { label: 'SAR', color: '#06b6d4', shape: 'circle' },
       { label: 'Navigation', color: '#3b82f6', shape: 'circle' },
-      { label: 'Commercial', color: '#a855f7', shape: 'circle' },
+      { label: 'Early Warning', color: '#d946ef', shape: 'diamond' },
+      { label: 'Commercial', color: '#22c55e', shape: 'circle' },
+      { label: 'ISS', color: '#fbbf24', shape: 'circle' },
     ],
   },
   fires: {
@@ -75,7 +78,7 @@ const LAYER_LEGENDS: Record<string, { title: string; entries: LegendEntry[] }> =
   sigint: {
     title: 'SIGINT',
     entries: [
-      { label: 'KiwiSDR', color: '#10b981', shape: 'circle' },
+      { label: 'KiwiSDR', color: '#22c55e', shape: 'circle' },
     ],
   },
   datacenters: {
