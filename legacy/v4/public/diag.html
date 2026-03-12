@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SENTINEL V4 Diagnostic</title>
+<style>body{background:#000;color:#0f0;font-family:monospace;padding:20px}
+.ok{color:#0f0}.err{color:#f00}.warn{color:#ff0}
+#map{width:600px;height:400px;border:1px solid #333;margin:10px 0}</style>
+<link href="https://unpkg.com/maplibre-gl@5.20.0/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.20.0/dist/maplibre-gl.js"></script>
+</head>
+<body>
+<h2>SENTINEL V4 — Diagnostic</h2>
+<div id="log"></div>
+<div id="map"></div>
+<script>
+function log(msg, cls) {
+  document.getElementById('log').innerHTML += `<div class="${cls}">[${new Date().toISOString().slice(11,19)}] ${msg}</div>`;
+}
+async function run() {
+  // 1. Test Go backend
+  try {
+    const r = await fetch('/api/events?limit=1');
+    const d = await r.json();
+    log(`Go backend: ${d.total} events ✓`, 'ok');
+  } catch(e) { log(`Go backend: FAILED — ${e.message}`, 'err'); }
+
+  // 2. Test Python backend
+  try {
+    const r = await fetch('/osint/health');
+    const d = await r.json();
+    log(`Python backend: ${d.status} — ${d.total_data_points} data points ✓`, 'ok');
+  } catch(e) { log(`Python backend: FAILED — ${e.message}`, 'err'); }
+
+  // 3. Test OSINT fast data
+  try {
+    const r = await fetch('/osint/live-data/fast');
+    const d = await r.json();
+    const flights = (d.commercial_flights?.length||0)+(d.military_flights?.length||0)+(d.private_flights?.length||0);
+    log(`OSINT fast: ${flights} flights, ${d.ships?.length||0} ships ✓`, 'ok');
+  } catch(e) { log(`OSINT fast: FAILED — ${e.message}`, 'err'); }
+
+  // 4. Test OSINT slow data
+  try {
+    const r = await fetch('/osint/live-data/slow');
+    const d = await r.json();
+    log(`OSINT slow: ${d.satellites?.length||0} sats, ${d.firms_fires?.length||0} fires, ${d.earthquakes?.length||0} eq ✓`, 'ok');
+  } catch(e) { log(`OSINT slow: FAILED — ${e.message}`, 'err'); }
+
+  // 5. Test catalog
+  try {
+    const r = await fetch('/catalog.json');
+    const d = await r.json();
+    log(`API Catalog: ${d.apis.length} APIs ✓`, 'ok');
+  } catch(e) { log(`API Catalog: FAILED — ${e.message}`, 'err'); }
+
+  // 6. Test MapLibre GL
+  try {
+    log('Initializing MapLibre GL map...', 'warn');
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: [0, 20],
+      zoom: 2
+    });
+    map.on('load', () => log('MapLibre GL: map loaded ✓', 'ok'));
+    map.on('error', (e) => log(`MapLibre GL error: ${e.error?.message || e}`, 'err'));
+  } catch(e) { log(`MapLibre GL: FAILED — ${e.message}`, 'err'); }
+
+  // 7. Test SSE
+  try {
+    const es = new EventSource('/api/events/stream');
+    es.onopen = () => { log('SSE: connected ✓', 'ok'); es.close(); };
+    es.onerror = () => { log('SSE: connection failed', 'warn'); es.close(); };
+    setTimeout(() => es.close(), 5000);
+  } catch(e) { log(`SSE: FAILED — ${e.message}`, 'err'); }
+}
+run();
+</script>
+</body>
+</html>

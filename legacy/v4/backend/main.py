@@ -138,10 +138,9 @@ async def get_fast_data(request: Request, response: Response):
         "military_flights": military,
         "private_flights": private,
         "ships": get_vessels(),
-        "gps_jamming": latest_data.get("gps_jamming", []),
         "freshness": {
             k: v for k, v in source_timestamps.items()
-            if k in ("flights", "ships", "gps_jamming")
+            if k in ("flights", "ships")
         },
     }
     return _etag_response(request, response, data)
@@ -163,43 +162,7 @@ async def get_slow_data(request: Request, response: Response):
         "financial": latest_data.get("financial"),
         "freshness": {
             k: v for k, v in source_timestamps.items()
-            if k not in ("flights", "ships", "gps_jamming")
-        },
-    }
-    return _etag_response(request, response, data)
-
-
-@app.get("/api/live-data/carriers")
-async def get_carrier_data(request: Request, response: Response):
-    """Carrier strike group estimated positions."""
-    data = {
-        "carriers": latest_data.get("carriers", []),
-        "freshness": {
-            "carriers": source_timestamps.get("carriers", "never"),
-        },
-    }
-    return _etag_response(request, response, data)
-
-
-@app.get("/api/live-data/cctv")
-async def get_cctv_data(request: Request, response: Response):
-    """Traffic camera feeds from multiple cities."""
-    data = {
-        "cctv": latest_data.get("cctv", []),
-        "freshness": {
-            "cctv": source_timestamps.get("cctv", "never"),
-        },
-    }
-    return _etag_response(request, response, data)
-
-
-@app.get("/api/live-data/ukraine")
-async def get_ukraine_data(request: Request, response: Response):
-    """Ukraine frontline GeoJSON from DeepState Map."""
-    data = {
-        "ukraine_frontline": latest_data.get("ukraine_frontline", []),
-        "freshness": {
-            "ukraine_frontline": source_timestamps.get("ukraine_frontline", "never"),
+            if k not in ("flights", "ships")
         },
     }
     return _etag_response(request, response, data)

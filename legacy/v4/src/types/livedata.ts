@@ -87,61 +87,6 @@ export interface FinancialData {
   eth_usd?: number
 }
 
-// Carrier Strike Group
-export interface CarrierGroup {
-  name: string
-  hull_number: string
-  lat: number
-  lng: number
-  region: string
-  last_reported: string
-  source: string
-  confidence: number
-}
-
-// CCTV Camera
-export interface CCTVCamera {
-  id: string
-  name: string
-  lat: number
-  lng: number
-  city: string
-  image_url: string
-  feed_type: string
-}
-
-// GPS Jamming Zone
-export interface GPSJammingZone {
-  lat: number
-  lng: number
-  severity_pct: number
-  aircraft_count: number
-  grid_id: string
-}
-
-// Ukraine Frontline (GeoJSON)
-export interface UkraineFrontline {
-  type: string
-  features: any[]
-}
-
-// Flight Trail Point
-export interface FlightTrailPoint {
-  lat: number
-  lng: number
-  alt: number
-  timestamp: number
-}
-
-// Extended Aircraft with trails and classification
-export interface ExtendedAircraft extends Aircraft {
-  trail?: FlightTrailPoint[]
-  classification?: 'commercial' | 'private' | 'military' | 'helicopter' | 'bizjet' | 'turboprop'
-  is_grounded?: boolean
-  is_holding_pattern?: boolean
-  owner?: string
-}
-
 export interface LiveData {
   commercial_flights: Aircraft[]
   military_flights: Aircraft[]
@@ -157,9 +102,5 @@ export interface LiveData {
   datacenters?: Array<{ name: string; operator: string; lat: number; lon: number; region: string }>
   financial?: FinancialData
   news?: Array<{ title: string; link: string; source: string; published: string; summary: string; lat?: number; lon?: number }>
-  carriers?: CarrierGroup[]
-  cctv?: CCTVCamera[]
-  gps_jamming?: GPSJammingZone[]
-  ukraine_frontline?: UkraineFrontline | null
   freshness?: Record<string, string>
 }

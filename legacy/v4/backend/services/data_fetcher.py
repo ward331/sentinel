@@ -40,10 +40,6 @@ latest_data: dict[str, list] = {
     "kiwisdr": [],
     "datacenters": [],
     "financial": [],
-    "carriers": [],
-    "ukraine_frontline": [],
-    "cctv": [],
-    "gps_jamming": [],
 }
 
 source_timestamps: dict[str, str] = {}
@@ -113,75 +109,6 @@ SAT_CLASSIFY = {
     "iss": ["ISS (ZARYA)", "ISS"],
 }
 
-# ---------------------------------------------------------------------------
-# Carrier Strike Group constants
-# ---------------------------------------------------------------------------
-CARRIER_NAMES = {
-    "Nimitz": "CVN-68",
-    "Eisenhower": "CVN-69",
-    "Vinson": "CVN-70",
-    "Roosevelt": "CVN-71",
-    "Lincoln": "CVN-72",
-    "Washington": "CVN-73",
-    "Stennis": "CVN-74",
-    "Truman": "CVN-75",
-    "Reagan": "CVN-76",
-    "Bush": "CVN-77",
-    "Ford": "CVN-78",
-}
-
-REGION_COORDS: dict[str, tuple[float, float]] = {
-    "south china sea": (15.0, 115.0),
-    "mediterranean": (35.0, 18.0),
-    "persian gulf": (26.0, 52.0),
-    "pacific": (20.0, -160.0),
-    "atlantic": (35.0, -40.0),
-    "indian ocean": (-5.0, 70.0),
-    "red sea": (20.0, 38.0),
-    "arabian sea": (15.0, 65.0),
-    "philippine sea": (20.0, 130.0),
-    "north sea": (57.0, 3.0),
-    "baltic sea": (58.0, 20.0),
-    "black sea": (43.0, 34.0),
-    "east china sea": (30.0, 125.0),
-    "gulf of aden": (12.0, 47.0),
-    "gulf of oman": (24.5, 58.5),
-    "strait of hormuz": (26.5, 56.5),
-    "strait of malacca": (3.0, 100.5),
-    "taiwan strait": (24.0, 119.0),
-    "suez canal": (30.5, 32.3),
-    "gulf of mexico": (25.0, -90.0),
-    "caribbean": (15.0, -75.0),
-    "western pacific": (15.0, 140.0),
-    "eastern pacific": (10.0, -120.0),
-    "north atlantic": (50.0, -30.0),
-    "south atlantic": (-20.0, -20.0),
-    "bay of bengal": (15.0, 88.0),
-    "sea of japan": (40.0, 135.0),
-    "yellow sea": (36.0, 123.0),
-    "coral sea": (-18.0, 155.0),
-    "bering sea": (57.0, -175.0),
-    "norwegian sea": (67.0, 3.0),
-    "barents sea": (73.0, 35.0),
-    "arabian gulf": (26.0, 52.0),
-    "java sea": (-5.0, 112.0),
-    "celebes sea": (3.0, 122.0),
-    "andaman sea": (10.0, 96.0),
-    "norfolk": (36.9, -76.3),
-    "san diego": (32.7, -117.2),
-    "yokosuka": (35.3, 139.7),
-    "pearl harbor": (21.3, -157.9),
-    "hawaii": (21.3, -157.9),
-    "guam": (13.4, 144.8),
-    "bahrain": (26.0, 50.6),
-    "diego garcia": (-7.3, 72.4),
-    "singapore": (1.35, 103.8),
-    "naples": (40.8, 14.3),
-    "rota": (36.6, -6.4),
-    "bremerton": (47.6, -122.6),
-    "newport news": (37.0, -76.4),
-}
-
 
 # ---------------------------------------------------------------------------
 # Scheduler management
@@ -207,10 +134,6 @@ def start_scheduler() -> None:
         (fetch_news,            "news",             300),
         (fetch_kiwisdr,         "kiwisdr",         3600),
         (fetch_financial,       "financial",        120),
-        (fetch_carriers,        "carriers",       43200),
-        (fetch_ukraine_frontline, "ukraine_frontline", 1800),
-        (fetch_cctv,            "cctv",             300),
-        (fetch_gps_jamming,     "gps_jamming",       60),
     ]
 
     for i, (func, name, interval) in enumerate(jobs):
@@ -244,8 +167,7 @@ def force_refresh() -> None:
     funcs = [
         fetch_flights, fetch_satellites, fetch_earthquakes, fetch_fires,
         fetch_gdelt, fetch_space_weather, fetch_internet_outages,
-        fetch_news, fetch_financial, fetch_carriers, fetch_ukraine_frontline,
-        fetch_cctv, fetch_gps_jamming,
+        fetch_news, fetch_financial,
     ]
     for fn in funcs:
         _executor.submit(fn)
@@ -284,7 +206,6 @@ def fetch_flights() -> None:
                     "on_ground": ac.get("alt_baro") == "ground",
                     "category": "military",
                     "squawk": ac.get("squawk", ""),
-                    "nacp": ac.get("nacp"),
                 })
 
         # Commercial/private aircraft from adsb.lol regional queries (no auth needed)
@@ -340,7 +261,6 @@ def fetch_flights() -> None:
                         "on_ground": ac.get("alt_baro") == "ground",
                         "category": cat,
                         "squawk": ac.get("squawk", ""),
-                        "nacp": ac.get("nacp"),
                     })
             except Exception:
                 continue  # skip failed regions
@@ -984,286 +904,3 @@ def fetch_financial() -> None:
 
     except Exception as e:
         logger.error("fetch_financial error: %s", e, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# NEW: Carrier Strike Groups (GDELT news scraping)
-# ---------------------------------------------------------------------------
-
-def fetch_carriers() -> None:
-    """Fetch estimated positions of US Navy aircraft carriers via GDELT news scraping."""
-    try:
-        carriers = []
-
-        for carrier_name, hull_number in CARRIER_NAMES.items():
-            try:
-                # Search GDELT for recent news mentioning this carrier
-                data = fetch_json(
-                    "https://api.gdeltproject.org/api/v2/doc/doc",
-                    params={
-                        "query": f'"{carrier_name}" carrier',
-                        "mode": "artlist",
-                        "maxrecords": "25",
-                        "format": "json",
-                        "timespan": "7d",
-                        "sourcelang": "English",
-                    },
-                    timeout=15,
-                )
-
-                if not data or "articles" not in data or not data["articles"]:
-                    continue
-
-                # Scan articles for region mentions
-                best_region = None
-                best_date = ""
-                best_source = ""
-                confidence = "low"
-
-                for art in data["articles"]:
-                    title = (art.get("title") or "").lower()
-                    # Combine title for region matching
-                    text_to_scan = title
-
-                    for region_name, (rlat, rlon) in REGION_COORDS.items():
-                        if region_name in text_to_scan:
-                            art_date = art.get("seendate", "")
-                            # Take the most recent mention
-                            if not best_date or art_date > best_date:
-                                best_region = region_name
-                                best_date = art_date
-                                best_source = art.get("url", "")
-                                # Multiple articles mentioning same region = higher confidence
-                                confidence = "medium"
-
-                # Second pass: count how many articles mention the best region
-                if best_region:
-                    mention_count = 0
-                    for art in data["articles"]:
-                        title_lower = (art.get("title") or "").lower()
-                        if best_region in title_lower:
-                            mention_count += 1
-                    if mention_count >= 3:
-                        confidence = "high"
-                    elif mention_count >= 2:
-                        confidence = "medium"
-
-                    rlat, rlon = REGION_COORDS[best_region]
-                    carriers.append({
-                        "name": f"USS {carrier_name}",
-                        "hull_number": hull_number,
-                        "lat": rlat,
-                        "lng": rlon,
-                        "region": best_region.title(),
-                        "last_reported": best_date,
-                        "source": best_source,
-                        "confidence": confidence,
-                    })
-
-            except Exception as e:
-                logger.debug("Carrier %s lookup failed: %s", carrier_name, e)
-                continue
-
-        latest_data["carriers"] = carriers
-        source_timestamps["carriers"] = datetime.now(timezone.utc).isoformat()
-        logger.info("Carriers: %d positions estimated", len(carriers))
-
-    except Exception as e:
-        logger.error("fetch_carriers error: %s", e, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# NEW: Ukraine Frontline (DeepState Map GeoJSON)
-# ---------------------------------------------------------------------------
-
-def fetch_ukraine_frontline() -> None:
-    """Fetch Ukraine frontline GeoJSON from DeepState Map."""
-    try:
-        # Primary: DeepState Map API
-        data = fetch_json(
-            "https://deepstatemap.live/api/history/last",
-            timeout=20,
-        )
-
-        if data:
-            # Store raw GeoJSON (could be FeatureCollection or similar structure)
-            if isinstance(data, dict):
-                latest_data["ukraine_frontline"] = [data]
-            elif isinstance(data, list):
-                latest_data["ukraine_frontline"] = data
-            else:
-                latest_data["ukraine_frontline"] = [data]
-            source_timestamps["ukraine_frontline"] = datetime.now(timezone.utc).isoformat()
-            logger.info("Ukraine frontline: fetched from DeepState API")
-            return
-
-        # Fallback: try alternate endpoint
-        fallback_data = fetch_json(
-            "https://deepstatemap.live/api/history",
-            timeout=20,
-        )
-        if fallback_data:
-            if isinstance(fallback_data, list) and fallback_data:
-                # Take the most recent entry
-                latest_data["ukraine_frontline"] = [fallback_data[-1]] if isinstance(fallback_data[-1], dict) else fallback_data[-1:]
-            elif isinstance(fallback_data, dict):
-                latest_data["ukraine_frontline"] = [fallback_data]
-            source_timestamps["ukraine_frontline"] = datetime.now(timezone.utc).isoformat()
-            logger.info("Ukraine frontline: fetched from DeepState fallback")
-            return
-
-        logger.warning("Ukraine frontline: no data from DeepState endpoints")
-
-    except Exception as e:
-        logger.error("fetch_ukraine_frontline error: %s", e, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# NEW: CCTV Cameras (London TfL + NYC DOT)
-# ---------------------------------------------------------------------------
-
-def fetch_cctv() -> None:
-    """Aggregate traffic camera feeds from multiple cities."""
-    try:
-        cameras = []
-
-        # --- London TfL JamCams ---
-        try:
-            tfl_data = fetch_json(
-                "https://api.tfl.gov.uk/Place/Type/JamCam",
-                timeout=15,
-            )
-            if tfl_data and isinstance(tfl_data, list):
-                for cam in tfl_data:
-                    cam_id = cam.get("id", "")
-                    lat = cam.get("lat")
-                    lon = cam.get("lon")
-                    name = cam.get("commonName", "")
-                    if lat is None or lon is None:
-                        continue
-                    # Extract the short ID for the image URL (e.g. "JamCams_00001.01234")
-                    # The image key is the id itself
-                    image_url = f"https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/{cam_id}.jpg"
-                    cameras.append({
-                        "id": cam_id,
-                        "name": name,
-                        "lat": round(float(lat), 5),
-                        "lng": round(float(lon), 5),
-                        "city": "London",
-                        "image_url": image_url,
-                        "feed_type": "jamcam",
-                    })
-                logger.debug("CCTV: %d London TfL JamCams", len([c for c in cameras if c["city"] == "London"]))
-        except Exception as e:
-            logger.debug("CCTV London TfL error: %s", e)
-
-        # --- NYC DOT ---
-        try:
-            nyc_data = fetch_json(
-                "https://webcams.nyctmc.org/api/cameras",
-                timeout=15,
-            )
-            if nyc_data and isinstance(nyc_data, list):
-                for cam in nyc_data:
-                    cam_id = cam.get("id", cam.get("cameraID", ""))
-                    name = cam.get("name", cam.get("cameraName", ""))
-                    lat = cam.get("lat", cam.get("latitude"))
-                    lng = cam.get("lng", cam.get("longitude", cam.get("lon")))
-                    image_url = cam.get("imageUrl", cam.get("image_url", cam.get("url", "")))
-                    if lat is None or lng is None:
-                        continue
-                    cameras.append({
-                        "id": str(cam_id),
-                        "name": name,
-                        "lat": round(float(lat), 5),
-                        "lng": round(float(lng), 5),
-                        "city": "NYC",
-                        "image_url": image_url,
-                        "feed_type": "traffic",
-                    })
-                logger.debug("CCTV: %d NYC DOT cameras", len([c for c in cameras if c["city"] == "NYC"]))
-        except Exception as e:
-            logger.debug("CCTV NYC DOT error: %s", e)
-
-        latest_data["cctv"] = cameras
-        source_timestamps["cctv"] = datetime.now(timezone.utc).isoformat()
-        logger.info("CCTV: %d cameras total", len(cameras))
-
-    except Exception as e:
-        logger.error("fetch_cctv error: %s", e, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# NEW: GPS Jamming Detection (computed from flight data)
-# ---------------------------------------------------------------------------
-
-def fetch_gps_jamming() -> None:
-    """Detect GPS jamming zones by analyzing aircraft with poor nav accuracy (nacp <= 4)."""
-    try:
-        flights = latest_data.get("flights", [])
-        if not flights:
-            latest_data["gps_jamming"] = []
-            source_timestamps["gps_jamming"] = datetime.now(timezone.utc).isoformat()
-            return
-
-        # Grid size: 2 degrees
-        GRID_SIZE = 2.0
-        MIN_AIRCRAFT = 3  # minimum affected aircraft to flag a cell
-
-        # Collect aircraft with poor GPS accuracy into grid cells
-        grid: dict[str, list] = {}  # "grid_lat,grid_lon" -> list of aircraft
-        total_in_cell: dict[str, int] = {}  # total aircraft per cell (for severity %)
-
-        for ac in flights:
-            lat = ac.get("lat")
-            lon = ac.get("lon")
-            if lat is None or lon is None:
-                continue
-
-            # Snap to grid
-            grid_lat = math.floor(float(lat) / GRID_SIZE) * GRID_SIZE
-            grid_lon = math.floor(float(lon) / GRID_SIZE) * GRID_SIZE
-            grid_id = f"{grid_lat:.0f},{grid_lon:.0f}"
-
-            # Count all aircraft per cell
-            total_in_cell[grid_id] = total_in_cell.get(grid_id, 0) + 1
-
-            # Check nacp (Navigation Accuracy Category - Position)
-            nacp = ac.get("nacp")
-            if nacp is not None:
-                try:
-                    nacp_val = int(nacp)
-                except (ValueError, TypeError):
-                    continue
-                if nacp_val <= 4:
-                    if grid_id not in grid:
-                        grid[grid_id] = []
-                    grid[grid_id].append(ac)
-
-        # Build jamming zones from cells with enough affected aircraft
-        jamming_zones = []
-        for grid_id, affected_aircraft in grid.items():
-            if len(affected_aircraft) >= MIN_AIRCRAFT:
-                parts = grid_id.split(",")
-                grid_lat = float(parts[0]) + GRID_SIZE / 2  # center of cell
-                grid_lon = float(parts[1]) + GRID_SIZE / 2
-                total = total_in_cell.get(grid_id, len(affected_aircraft))
-                severity_pct = round(len(affected_aircraft) / total * 100, 1) if total > 0 else 0
-
-                jamming_zones.append({
-                    "lat": grid_lat,
-                    "lng": grid_lon,
-                    "severity_pct": severity_pct,
-                    "aircraft_count": len(affected_aircraft),
-                    "grid_id": grid_id,
-                })
-
-        # Sort by aircraft_count descending
-        jamming_zones.sort(key=lambda z: z["aircraft_count"], reverse=True)
-
-        latest_data["gps_jamming"] = jamming_zones
-        source_timestamps["gps_jamming"] = datetime.now(timezone.utc).isoformat()
-        logger.info("GPS Jamming: %d potential zones detected", len(jamming_zones))
-
-    except Exception as e:
-        logger.error("fetch_gps_jamming error: %s", e, exc_info=True)

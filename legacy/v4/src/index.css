@@ -1,0 +1,83 @@
+@import "maplibre-gl/dist/maplibre-gl.css";
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Ensure MapLibre elements survive Tailwind v4 preflight reset */
+.maplibregl-map {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  position: absolute !important;
+}
+.maplibregl-popup {
+  z-index: 50 !important;
+}
+.sentinel-popup .maplibregl-popup-content {
+  background: #111827 !important;
+  color: #d1d5db !important;
+  border: 1px solid #374151 !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+}
+.sentinel-popup .maplibregl-popup-tip {
+  border-top-color: #374151 !important;
+}
+
+body {
+  background: #030712;
+  color: #d1d5db;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Map style filters */
+.map-flir canvas { filter: hue-rotate(180deg) invert(0.9) saturate(1.5) !important; }
+.map-nvg canvas { filter: saturate(0) brightness(0.7) !important; }
+.map-crt canvas { filter: saturate(0.4) contrast(1.3) brightness(0.9) !important; }
+
+.map-flir::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: rgba(255, 140, 0, 0.04); z-index: 1;
+}
+.map-nvg::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: rgba(0, 255, 0, 0.03); z-index: 1;
+}
+.map-crt::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 0, 0.02) 2px, rgba(0, 255, 0, 0.02) 4px);
+  z-index: 1;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+
+/* Pulsing marker animation */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+.pulse-marker::before {
+  content: ''; position: absolute; inset: -4px;
+  border-radius: 50%; border: 2px solid currentColor;
+  animation: pulse-ring 2s ease-out infinite;
+}

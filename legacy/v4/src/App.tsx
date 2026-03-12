@@ -97,18 +97,11 @@ function App() {
   const [correlations, setCorrelations] = useState<CorrelationFlash[]>([])
   const [health, setHealth] = useState<HealthResponse | null>(null)
 
-  // Additional data layers (separate fetch intervals)
-  const [carriers, setCarriers] = useState<LiveData['carriers']>([])
-  const [cctv, setCctv] = useState<LiveData['cctv']>([])
-  const [ukraineFrontline, setUkraineFrontline] = useState<LiveData['ukraine_frontline']>(null)
-
   // UI state
   const [selectedEvent, setSelectedEvent] = useState<SentinelEvent | null>(null)
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('default')
-  const [measureMode, setMeasureMode] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<string>>(new Set([
     'events', 'aircraft', 'ships', 'satellites', 'earthquakes', 'fires', 'conflicts', 'sigint',
-    'carriers', 'gps_jamming', 'ukraine',
   ]))
   const [flyTo, setFlyTo] = useState<[number, number] | null>(null)
   const [mouseCoords, setMouseCoords] = useState<[number, number] | null>(null)
@@ -308,48 +301,6 @@ function App() {
     return () => { clearInterval(fastTimer); clearInterval(slowTimer) }
   }, [])
 
-  // ─── Poll carriers (120s) ──────────────────────────────────────────
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`${DATA_FETCHER_BASE}/live-data/carriers`)
-        const data = await res.json()
-        setCarriers(data.carriers || data || [])
-      } catch (e) { console.warn('[V4] Carriers fetch failed:', e) }
-    }
-    load()
-    const timer = setInterval(load, 120000)
-    return () => clearInterval(timer)
-  }, [])
-
-  // ─── Poll CCTV (300s) ─────────────────────────────────────────────
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`${DATA_FETCHER_BASE}/live-data/cctv`)
-        const data = await res.json()
-        setCctv(data.cctv || data || [])
-      } catch (e) { console.warn('[V4] CCTV fetch failed:', e) }
-    }
-    load()
-    const timer = setInterval(load, 300000)
-    return () => clearInterval(timer)
-  }, [])
-
-  // ─── Poll Ukraine frontline (1800s) ────────────────────────────────
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`${DATA_FETCHER_BASE}/live-data/ukraine`)
-        const data = await res.json()
-        setUkraineFrontline(data.ukraine_frontline || data || null)
-      } catch (e) { console.warn('[V4] Ukraine frontline fetch failed:', e) }
-    }
-    load()
-    const timer = setInterval(load, 1800000)
-    return () => clearInterval(timer)
-  }, [])
-
   // ─── SSE for real-time events ─────────────────────────────────────
   useThrottledSSE(configured, useCallback((event: SentinelEvent) => {
     setEvents(prev => [event, ...prev].slice(0, 500))
@@ -372,22 +323,7 @@ function App() {
     fires: liveData?.firms_fires?.length || 0,
     conflicts: liveData?.gdelt?.length || 0,
     sigint: liveData?.kiwisdr?.length || 0,
-    carriers: carriers?.length || 0,
-    cctv: cctv?.length || 0,
-    gps_jamming: liveData?.gps_jamming?.length || 0,
-    ukraine: ukraineFrontline?.features?.length || 0,
-  }), [events, liveData, carriers, cctv, ukraineFrontline])
-
-  // Merge separately-fetched data into liveData for MaplibreViewer
-  const mergedLiveData = useMemo<LiveData | null>(() => {
-    if (!liveData) return null
-    return {
-      ...liveData,
-      carriers: carriers || liveData.carriers || [],
-      cctv: cctv || liveData.cctv || [],
-      ukraine_frontline: ukraineFrontline || liveData.ukraine_frontline || null,
-    }
-  }, [liveData, carriers, cctv, ukraineFrontline])
+  }), [events, liveData])
 
   const freshness = liveData?.freshness || {}
 
@@ -438,7 +374,7 @@ function App() {
             <div className="absolute inset-0 z-0">
               <MaplibreViewer
                 events={events}
-                liveData={mergedLiveData}
+                liveData={liveData}
                 selectedEvent={selectedEvent}
                 onSelectEvent={handleSelectEvent}
                 flyTo={flyTo}
@@ -446,7 +382,6 @@ function App() {
                 visibleLayers={visibleLayers}
                 correlations={correlations}
                 onMouseMove={setMouseCoords}
-                measureMode={measureMode}
               />
             </div>
 
@@ -463,19 +398,6 @@ function App() {
 
             {/* Find/Locate bar */}
             <FindLocateBar onFlyTo={setFlyTo} />
-
-            {/* Measure mode toggle */}
-            <button
-              onClick={() => setMeasureMode(m => !m)}
-              className={`absolute top-2 right-[340px] z-10 px-2.5 py-1.5 rounded border text-[10px] font-mono uppercase tracking-wider transition-all ${
-                measureMode
-                  ? 'bg-cyan-950/80 border-cyan-600 text-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
-                  : 'bg-gray-950/80 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400'
-              }`}
-              title="Toggle measurement mode"
-            >
-              {measureMode ? 'MEASURING' : 'MEASURE'}
-            </button>
 
             {/* Right panel (WorldviewRightPanel with tabs) */}
             <WorldviewRightPanel

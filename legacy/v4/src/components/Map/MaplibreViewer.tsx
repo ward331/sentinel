@@ -1,20 +1,12 @@
-import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 // CSS imported in index.css (must load before Tailwind)
 import type { SentinelEvent, CorrelationFlash } from '../../types/sentinel'
-import type { LiveData, Aircraft, Vessel, Satellite, Earthquake, Fire, GdeltEvent, KiwiSDR, CarrierGroup, GPSJammingZone, CCTVCamera, UkraineFrontline } from '../../types/livedata'
+import type { LiveData, Aircraft, Vessel, Satellite, Earthquake, Fire, GdeltEvent, KiwiSDR } from '../../types/livedata'
 
 // ─── Types ────────────────────────────────────────────────────────
 
 export type MapStyleKey = 'default' | 'satellite' | 'flir' | 'nvg' | 'crt'
-
-export interface RegionDossier {
-  country: string
-  population: string
-  capital: string
-  languages: string[]
-  summary: string
-}
 
 export interface MaplibreViewerProps {
   events: SentinelEvent[]
@@ -26,7 +18,6 @@ export interface MaplibreViewerProps {
   visibleLayers: Set<string>
   correlations: CorrelationFlash[]
   onMouseMove?: (coords: [number, number] | null) => void
-  measureMode?: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -92,17 +83,6 @@ const LAYER_IDS = {
   sigint: 'sigint-layer',
   correlations: 'correlations-layer',
   terminator: 'terminator-layer',
-  carriers: 'carriers-layer',
-  gpsJamming: 'gps-jamming-layer',
-  gpsJammingLabel: 'gps-jamming-label-layer',
-  ukraine: 'ukraine-frontline-layer',
-  cctv: 'cctv-layer',
-  cctvCluster: 'cctv-cluster-layer',
-  cctvClusterCount: 'cctv-cluster-count-layer',
-  flightTrails: 'flight-trails-layer',
-  measurement: 'measurement-layer',
-  measurementPoints: 'measurement-points-layer',
-  measurementLabel: 'measurement-label-layer',
 } as const
 
 const SOURCE_IDS = {
@@ -116,18 +96,12 @@ const SOURCE_IDS = {
   sigint: 'sigint-src',
   correlations: 'correlations-src',
   terminator: 'terminator-src',
-  carriers: 'carriers-src',
-  gpsJamming: 'gps-jamming-src',
-  ukraine: 'ukraine-frontline-src',
-  cctv: 'cctv-src',
-  flightTrails: 'flight-trails-src',
-  measurement: 'measurement-src',
 } as const
 
 // Maps visibleLayers keys to their layer IDs (some have multiple layers)
 const LAYER_KEY_TO_IDS: Record<string, string[]> = {
   events: [LAYER_IDS.events, LAYER_IDS.eventsGlow],
-  aircraft: [LAYER_IDS.aircraft, LAYER_IDS.flightTrails],
+  aircraft: [LAYER_IDS.aircraft],
   ships: [LAYER_IDS.ships],
   satellites: [LAYER_IDS.satellites],
   earthquakes: [LAYER_IDS.earthquakes, LAYER_IDS.earthquakesPulse],
@@ -136,10 +110,6 @@ const LAYER_KEY_TO_IDS: Record<string, string[]> = {
   sigint: [LAYER_IDS.sigint],
   correlations: [LAYER_IDS.correlations],
   terminator: [LAYER_IDS.terminator],
-  carriers: [LAYER_IDS.carriers],
-  gps_jamming: [LAYER_IDS.gpsJamming, LAYER_IDS.gpsJammingLabel],
-  ukraine: [LAYER_IDS.ukraine],
-  cctv: [LAYER_IDS.cctv, LAYER_IDS.cctvCluster, LAYER_IDS.cctvClusterCount],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -229,28 +199,6 @@ function formatTime(ts: string | number): string {
     hour: '2-digit', minute: '2-digit',
     hour12: false,
   })
-}
-
-/** Haversine distance between two points in km */
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-/** Bearing from point 1 to point 2 in degrees */
-function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const lat1R = (lat1 * Math.PI) / 180
-  const lat2R = (lat2 * Math.PI) / 180
-  const y = Math.sin(dLon) * Math.cos(lat2R)
-  const x = Math.cos(lat1R) * Math.sin(lat2R) - Math.sin(lat1R) * Math.cos(lat2R) * Math.cos(dLon)
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
 // ─── GeoJSON Builders ─────────────────────────────────────────────
@@ -473,126 +421,6 @@ function buildCorrelationsGeoJSON(correlations: CorrelationFlash[]): GeoJSON.Fea
   return { type: 'FeatureCollection', features }
 }
 
-function buildCarriersGeoJSON(liveData: LiveData | null, bounds: maplibregl.LngLatBounds | null): GeoJSON.FeatureCollection {
-  if (!liveData?.carriers) return emptyFC()
-  const features: GeoJSON.Feature[] = []
-  for (const c of liveData.carriers) {
-    if (bounds && !inBounds(c.lng, c.lat, bounds)) continue
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [c.lng, c.lat] },
-      properties: {
-        name: c.name,
-        hull_number: c.hull_number,
-        region: c.region,
-        last_reported: c.last_reported,
-        confidence: c.confidence,
-        source: c.source,
-      },
-    })
-  }
-  return { type: 'FeatureCollection', features }
-}
-
-function buildGPSJammingGeoJSON(liveData: LiveData | null, bounds: maplibregl.LngLatBounds | null): GeoJSON.FeatureCollection {
-  if (!liveData?.gps_jamming) return emptyFC()
-  const features: GeoJSON.Feature[] = []
-  for (const z of liveData.gps_jamming) {
-    // Build a 2-degree rectangle centered on the zone
-    const halfDeg = 1
-    const minLng = z.lng - halfDeg
-    const maxLng = z.lng + halfDeg
-    const minLat = z.lat - halfDeg
-    const maxLat = z.lat + halfDeg
-    if (bounds && !inBounds(z.lng, z.lat, bounds)) continue
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat],
-        ]],
-      },
-      properties: {
-        severity_pct: z.severity_pct,
-        aircraft_count: z.aircraft_count,
-        grid_id: z.grid_id,
-        center_lng: z.lng,
-        center_lat: z.lat,
-        label: `GPS JAM ${z.severity_pct}%`,
-      },
-    })
-  }
-  return { type: 'FeatureCollection', features }
-}
-
-function buildCCTVGeoJSON(liveData: LiveData | null, bounds: maplibregl.LngLatBounds | null): GeoJSON.FeatureCollection {
-  if (!liveData?.cctv) return emptyFC()
-  const features: GeoJSON.Feature[] = []
-  for (const cam of liveData.cctv) {
-    if (bounds && !inBounds(cam.lng, cam.lat, bounds)) continue
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [cam.lng, cam.lat] },
-      properties: {
-        id: cam.id,
-        name: cam.name,
-        city: cam.city,
-        image_url: cam.image_url,
-        feed_type: cam.feed_type,
-      },
-    })
-  }
-  return { type: 'FeatureCollection', features }
-}
-
-function buildFlightTrailsGeoJSON(trailsMap: Map<string, [number, number][]>): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = []
-  for (const [key, trail] of trailsMap) {
-    if (trail.length < 2) continue
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: trail },
-      properties: { key },
-    })
-  }
-  return { type: 'FeatureCollection', features }
-}
-
-function buildMeasurementGeoJSON(points: [number, number][]): { line: GeoJSON.FeatureCollection; pts: GeoJSON.FeatureCollection } {
-  const lineFeatures: GeoJSON.Feature[] = []
-  const ptFeatures: GeoJSON.Feature[] = []
-
-  for (let i = 0; i < points.length; i++) {
-    const [lng, lat] = points[i]
-    let label = `P${i + 1}`
-    if (i > 0) {
-      const [pLng, pLat] = points[i - 1]
-      const d = haversineKm(pLat, pLng, lat, lng)
-      const b = bearingDeg(pLat, pLng, lat, lng)
-      label = `${d.toFixed(1)} km / ${b.toFixed(0)}°`
-    }
-    ptFeatures.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [lng, lat] },
-      properties: { label },
-    })
-  }
-
-  if (points.length >= 2) {
-    lineFeatures.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: points },
-      properties: {},
-    })
-  }
-
-  return {
-    line: { type: 'FeatureCollection', features: lineFeatures },
-    pts: { type: 'FeatureCollection', features: ptFeatures },
-  }
-}
-
 // ─── CSS Filter Overlays ──────────────────────────────────────────
 
 function getCanvasFilter(style: MapStyleKey): string {
@@ -616,7 +444,6 @@ export default function MaplibreViewer({
   visibleLayers,
   correlations,
   onMouseMove,
-  measureMode,
 }: MaplibreViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -625,16 +452,6 @@ export default function MaplibreViewer({
   const updateTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const prevStyleRef = useRef<MapStyleKey>(mapStyle)
   const terminatorTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const flightTrailsRef = useRef<Map<string, [number, number][]>>(new Map())
-  const measurePointsRef = useRef<[number, number][]>([])
-
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; lat: number; lng: number } | null>(null)
-  const [regionDossier, setRegionDossier] = useState<RegionDossier | null>(null)
-  const [dossierLoading, setDossierLoading] = useState(false)
-  const [dossierPos, setDossierPos] = useState<{ x: number; y: number } | null>(null)
-  // Measurement total for display
-  const [measureTotal, setMeasureTotal] = useState<number>(0)
 
   // ─── Debounced source update ────────────────────────────────────
 
@@ -776,22 +593,6 @@ export default function MaplibreViewer({
     scheduleSourceUpdate(SOURCE_IDS.conflicts, buildConflictsGeoJSON(liveData, bounds))
     scheduleSourceUpdate(SOURCE_IDS.sigint, buildSigintGeoJSON(liveData, bounds))
     scheduleSourceUpdate(SOURCE_IDS.correlations, buildCorrelationsGeoJSON(correlations))
-    scheduleSourceUpdate(SOURCE_IDS.carriers, buildCarriersGeoJSON(liveData, bounds))
-    scheduleSourceUpdate(SOURCE_IDS.gpsJamming, buildGPSJammingGeoJSON(liveData, bounds))
-    // CCTV uses clustered source — update directly
-    const map = mapRef.current
-    if (map && sourcesReadyRef.current) {
-      const cctvSrc = map.getSource(SOURCE_IDS.cctv) as maplibregl.GeoJSONSource | undefined
-      if (cctvSrc) cctvSrc.setData(buildCCTVGeoJSON(liveData, bounds))
-    }
-    // Ukraine frontline — set full GeoJSON directly
-    if (map && sourcesReadyRef.current) {
-      const ukSrc = map.getSource(SOURCE_IDS.ukraine) as maplibregl.GeoJSONSource | undefined
-      if (ukSrc) {
-        const fl = liveData?.ukraine_frontline
-        ukSrc.setData(fl && fl.features?.length ? fl as GeoJSON.FeatureCollection : emptyFC())
-      }
-    }
   }, [events, liveData, correlations, getBounds, scheduleSourceUpdate])
 
   useEffect(() => {
@@ -812,123 +613,6 @@ export default function MaplibreViewer({
       onMoveEnd.cancel()
     }
   }, [pushAllData])
-
-  // ─── Flight trails accumulation ─────────────────────────────────
-
-  useEffect(() => {
-    if (!liveData || !sourcesReadyRef.current) return
-    const allAircraft: Aircraft[] = [
-      ...(liveData.commercial_flights || []),
-      ...(liveData.military_flights || []),
-      ...(liveData.private_flights || []),
-    ]
-    const trails = flightTrailsRef.current
-    const MAX_TRAIL = 50
-    for (const ac of allAircraft) {
-      const key = ac.callsign || ac.icao
-      if (!key) continue
-      let trail = trails.get(key)
-      if (!trail) {
-        trail = []
-        trails.set(key, trail)
-      }
-      const last = trail[trail.length - 1]
-      // Only add if position changed
-      if (!last || last[0] !== ac.lon || last[1] !== ac.lat) {
-        trail.push([ac.lon, ac.lat])
-        if (trail.length > MAX_TRAIL) trail.shift()
-      }
-    }
-    scheduleSourceUpdate(SOURCE_IDS.flightTrails, buildFlightTrailsGeoJSON(trails))
-  }, [liveData, scheduleSourceUpdate])
-
-  // ─── Measurement mode ─────────────────────────────────────────
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-    if (!measureMode) {
-      // Clear measurement
-      measurePointsRef.current = []
-      setMeasureTotal(0)
-      if (sourcesReadyRef.current) {
-        const { line, pts } = buildMeasurementGeoJSON([])
-        scheduleSourceUpdate(SOURCE_IDS.measurement, line)
-        const ptSrc = map.getSource(SOURCE_IDS.measurement + '-pts') as maplibregl.GeoJSONSource | undefined
-        if (ptSrc) ptSrc.setData(pts)
-      }
-      return
-    }
-
-    const handleMeasureClick = (e: maplibregl.MapMouseEvent) => {
-      const points = measurePointsRef.current
-      points.push([e.lngLat.lng, e.lngLat.lat])
-
-      // Calculate total distance
-      let total = 0
-      for (let i = 1; i < points.length; i++) {
-        total += haversineKm(points[i - 1][1], points[i - 1][0], points[i][1], points[i][0])
-      }
-      setMeasureTotal(total)
-
-      if (sourcesReadyRef.current) {
-        const { line, pts } = buildMeasurementGeoJSON(points)
-        scheduleSourceUpdate(SOURCE_IDS.measurement, line)
-        const ptSrc = map.getSource(SOURCE_IDS.measurement + '-pts') as maplibregl.GeoJSONSource | undefined
-        if (ptSrc) ptSrc.setData(pts)
-      }
-    }
-
-    map.on('click', handleMeasureClick)
-    map.getCanvas().style.cursor = 'crosshair'
-
-    return () => {
-      map.off('click', handleMeasureClick)
-      map.getCanvas().style.cursor = ''
-    }
-  }, [measureMode, scheduleSourceUpdate])
-
-  // ─── Right-click context menu ──────────────────────────────────
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-
-    const handleContextMenu = (e: maplibregl.MapMouseEvent) => {
-      e.originalEvent.preventDefault()
-      setContextMenu({
-        x: e.originalEvent.clientX,
-        y: e.originalEvent.clientY,
-        lat: e.lngLat.lat,
-        lng: e.lngLat.lng,
-      })
-      setRegionDossier(null)
-    }
-
-    map.on('contextmenu', handleContextMenu)
-    return () => {
-      map.off('contextmenu', handleContextMenu)
-    }
-  }, [])
-
-  const fetchRegionDossier = useCallback(async (lat: number, lng: number, x: number, y: number) => {
-    setContextMenu(null)
-    setDossierLoading(true)
-    setDossierPos({ x, y })
-    try {
-      const resp = await fetch(`/api/region-dossier?lat=${lat}&lng=${lng}`)
-      if (resp.ok) {
-        const data = await resp.json()
-        setRegionDossier(data)
-      } else {
-        setRegionDossier({ country: 'Unknown', population: 'N/A', capital: 'N/A', languages: [], summary: 'Failed to load region data.' })
-      }
-    } catch {
-      setRegionDossier({ country: 'Error', population: 'N/A', capital: 'N/A', languages: [], summary: 'Network error fetching dossier.' })
-    } finally {
-      setDossierLoading(false)
-    }
-  }, [])
 
   // ─── Interactions setup ─────────────────────────────────────────
 
@@ -1066,41 +750,6 @@ export default function MaplibreViewer({
       </div>
     `)
 
-    // ── Carriers hover ──
-    setupHoverPopup(map, popup, LAYER_IDS.carriers, (p) => `
-      <div class="font-mono text-xs">
-        <div class="font-bold" style="color:#1e3a5f">⚓ ${escapeHtml(p.name as string)}</div>
-        <div>HULL: ${escapeHtml(p.hull_number as string)}</div>
-        <div>REGION: ${escapeHtml(p.region as string)}</div>
-        <div>REPORTED: ${escapeHtml(p.last_reported as string)}</div>
-        <div>CONFIDENCE: ${p.confidence}%</div>
-      </div>
-    `)
-
-    // ── CCTV click (show image popup) ──
-    map.on('click', LAYER_IDS.cctv, (e) => {
-      if (!e.features?.length) return
-      const f = e.features[0]
-      const coords = (f.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
-      const p = f.properties!
-      new maplibregl.Popup({ closeButton: true, maxWidth: '360px', className: 'sentinel-popup' })
-        .setLngLat(coords)
-        .setHTML(`
-          <div class="font-mono text-xs">
-            <div class="font-bold text-green-400 mb-1">${escapeHtml(p.name as string)}</div>
-            <div class="mb-1">${escapeHtml(p.city as string)} | ${escapeHtml(p.feed_type as string)}</div>
-            <img src="${escapeHtml(p.image_url as string)}" style="max-width:320px;max-height:200px;border-radius:4px;" alt="CCTV" loading="lazy" />
-          </div>
-        `)
-        .addTo(map)
-    })
-    setupHoverPopup(map, popup, LAYER_IDS.cctv, (p) => `
-      <div class="font-mono text-xs">
-        <div class="font-bold text-green-400">${escapeHtml(p.name as string)}</div>
-        <div>${escapeHtml(p.city as string)} | Click for feed</div>
-      </div>
-    `)
-
     // ── Correlations hover ──
     map.on('mouseenter', LAYER_IDS.correlations, (e) => {
       map.getCanvas().style.cursor = 'pointer'
@@ -1226,7 +875,7 @@ export default function MaplibreViewer({
   // ─── Render ─────────────────────────────────────────────────────
 
   return (
-    <div className="relative w-full h-full overflow-hidden" onClick={() => { setContextMenu(null); }}>
+    <div className="relative w-full h-full overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Color tint overlay for FLIR/NVG/CRT */}
@@ -1244,58 +893,6 @@ export default function MaplibreViewer({
             mixBlendMode: 'multiply',
           }}
         />
-      )}
-
-      {/* Measurement total display */}
-      {measureMode && measureTotal > 0 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 border border-cyan-500 text-cyan-300 font-mono text-sm px-4 py-2 rounded z-50">
-          TOTAL: {measureTotal.toFixed(2)} km | {measurePointsRef.current.length} points
-        </div>
-      )}
-
-      {/* Right-click context menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-[9999] bg-neutral-900 border border-neutral-600 rounded shadow-xl font-mono text-xs"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button
-            className="block w-full text-left px-4 py-2 hover:bg-neutral-700 text-neutral-200"
-            onClick={(e) => {
-              e.stopPropagation()
-              fetchRegionDossier(contextMenu.lat, contextMenu.lng, contextMenu.x, contextMenu.y)
-            }}
-          >
-            Region Dossier
-          </button>
-        </div>
-      )}
-
-      {/* Region dossier overlay */}
-      {dossierPos && (dossierLoading || regionDossier) && (
-        <div
-          className="fixed z-[9999] bg-neutral-900/95 border border-cyan-700 rounded-lg shadow-2xl font-mono text-xs p-4 max-w-sm"
-          style={{ left: Math.min(dossierPos.x, window.innerWidth - 380), top: Math.min(dossierPos.y, window.innerHeight - 300) }}
-        >
-          {dossierLoading ? (
-            <div className="text-cyan-400 animate-pulse">Loading region dossier...</div>
-          ) : regionDossier ? (
-            <>
-              <div className="flex justify-between items-start mb-2">
-                <div className="font-bold text-white text-sm">{regionDossier.country}</div>
-                <button className="text-neutral-500 hover:text-white ml-2" onClick={() => { setDossierPos(null); setRegionDossier(null) }}>✕</button>
-              </div>
-              <div><span className="text-neutral-400">CAPITAL:</span> {regionDossier.capital}</div>
-              <div><span className="text-neutral-400">POP:</span> {regionDossier.population}</div>
-              {regionDossier.languages.length > 0 && (
-                <div><span className="text-neutral-400">LANG:</span> {regionDossier.languages.join(', ')}</div>
-              )}
-              {regionDossier.summary && (
-                <div className="mt-2 text-neutral-300 leading-relaxed">{regionDossier.summary}</div>
-              )}
-            </>
-          ) : null}
-        </div>
       )}
     </div>
   )
@@ -1315,33 +912,12 @@ function addAllSources(map: maplibregl.Map) {
     [SOURCE_IDS.satellites, emptyFC()],
     [SOURCE_IDS.sigint, emptyFC()],
     [SOURCE_IDS.events, emptyFC()],
-    [SOURCE_IDS.carriers, emptyFC()],
-    [SOURCE_IDS.gpsJamming, emptyFC()],
-    [SOURCE_IDS.ukraine, emptyFC()],
-    [SOURCE_IDS.flightTrails, emptyFC()],
-    [SOURCE_IDS.measurement, emptyFC()],
   ]
 
   for (const [id, data] of sources) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data })
     }
-  }
-
-  // CCTV source with clustering
-  if (!map.getSource(SOURCE_IDS.cctv)) {
-    map.addSource(SOURCE_IDS.cctv, {
-      type: 'geojson',
-      data: emptyFC(),
-      cluster: true,
-      clusterMaxZoom: 12,
-      clusterRadius: 50,
-    })
-  }
-
-  // Measurement points source (separate for labels)
-  if (!map.getSource(SOURCE_IDS.measurement + '-pts')) {
-    map.addSource(SOURCE_IDS.measurement + '-pts', { type: 'geojson', data: emptyFC() })
   }
 }
 
@@ -1499,182 +1075,6 @@ function addAllLayers(map: maplibregl.Map) {
         'circle-opacity': 0.8,
         'circle-stroke-color': '#86efac',
         'circle-stroke-width': 2,
-      },
-    })
-  }
-
-  // ── Carriers ──
-  if (!map.getLayer(LAYER_IDS.carriers)) {
-    map.addLayer({
-      id: LAYER_IDS.carriers,
-      type: 'circle',
-      source: SOURCE_IDS.carriers,
-      paint: {
-        'circle-radius': 12,
-        'circle-color': '#1e3a5f',
-        'circle-opacity': 0.9,
-        'circle-stroke-color': '#60a5fa',
-        'circle-stroke-width': 2,
-      },
-    })
-  }
-
-  // ── GPS Jamming Zones (fill) ──
-  if (!map.getLayer(LAYER_IDS.gpsJamming)) {
-    map.addLayer({
-      id: LAYER_IDS.gpsJamming,
-      type: 'fill',
-      source: SOURCE_IDS.gpsJamming,
-      paint: {
-        'fill-color': 'rgba(255, 0, 0, 0.3)',
-        'fill-outline-color': '#ef4444',
-      },
-    })
-  }
-
-  // ── GPS Jamming Labels ──
-  if (!map.getLayer(LAYER_IDS.gpsJammingLabel)) {
-    map.addLayer({
-      id: LAYER_IDS.gpsJammingLabel,
-      type: 'symbol',
-      source: SOURCE_IDS.gpsJamming,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': 11,
-        'text-allow-overlap': true,
-      },
-      paint: {
-        'text-color': '#ff4444',
-        'text-halo-color': '#000000',
-        'text-halo-width': 1,
-      },
-    })
-  }
-
-  // ── Ukraine Frontline ──
-  if (!map.getLayer(LAYER_IDS.ukraine)) {
-    map.addLayer({
-      id: LAYER_IDS.ukraine,
-      type: 'line',
-      source: SOURCE_IDS.ukraine,
-      paint: {
-        'line-color': '#ef4444',
-        'line-width': 3,
-        'line-opacity': 0.9,
-      },
-    })
-  }
-
-  // ── CCTV Clusters ──
-  if (!map.getLayer(LAYER_IDS.cctvCluster)) {
-    map.addLayer({
-      id: LAYER_IDS.cctvCluster,
-      type: 'circle',
-      source: SOURCE_IDS.cctv,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-radius': ['step', ['get', 'point_count'], 15, 10, 20, 50, 25],
-        'circle-color': '#22c55e',
-        'circle-opacity': 0.6,
-      },
-    })
-  }
-
-  // ── CCTV Cluster Count Labels ──
-  if (!map.getLayer(LAYER_IDS.cctvClusterCount)) {
-    map.addLayer({
-      id: LAYER_IDS.cctvClusterCount,
-      type: 'symbol',
-      source: SOURCE_IDS.cctv,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-size': 11,
-      },
-      paint: {
-        'text-color': '#ffffff',
-      },
-    })
-  }
-
-  // ── CCTV Individual Points ──
-  if (!map.getLayer(LAYER_IDS.cctv)) {
-    map.addLayer({
-      id: LAYER_IDS.cctv,
-      type: 'circle',
-      source: SOURCE_IDS.cctv,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': 5,
-        'circle-color': '#22c55e',
-        'circle-opacity': 0.85,
-        'circle-stroke-color': '#86efac',
-        'circle-stroke-width': 1,
-      },
-    })
-  }
-
-  // ── Flight Trails ──
-  if (!map.getLayer(LAYER_IDS.flightTrails)) {
-    map.addLayer({
-      id: LAYER_IDS.flightTrails,
-      type: 'line',
-      source: SOURCE_IDS.flightTrails,
-      paint: {
-        'line-color': '#06b6d4',
-        'line-width': 1,
-        'line-opacity': 0.4,
-      },
-    })
-  }
-
-  // ── Measurement Line ──
-  if (!map.getLayer(LAYER_IDS.measurement)) {
-    map.addLayer({
-      id: LAYER_IDS.measurement,
-      type: 'line',
-      source: SOURCE_IDS.measurement,
-      paint: {
-        'line-color': '#fbbf24',
-        'line-width': 2,
-        'line-dasharray': [4, 4],
-        'line-opacity': 0.9,
-      },
-    })
-  }
-
-  // ── Measurement Points ──
-  if (!map.getLayer(LAYER_IDS.measurementPoints)) {
-    map.addLayer({
-      id: LAYER_IDS.measurementPoints,
-      type: 'circle',
-      source: SOURCE_IDS.measurement + '-pts',
-      paint: {
-        'circle-radius': 5,
-        'circle-color': '#fbbf24',
-        'circle-opacity': 0.9,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1,
-      },
-    })
-  }
-
-  // ── Measurement Labels ──
-  if (!map.getLayer(LAYER_IDS.measurementLabel)) {
-    map.addLayer({
-      id: LAYER_IDS.measurementLabel,
-      type: 'symbol',
-      source: SOURCE_IDS.measurement + '-pts',
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': 11,
-        'text-offset': [0, -1.5],
-        'text-allow-overlap': true,
-      },
-      paint: {
-        'text-color': '#fbbf24',
-        'text-halo-color': '#000000',
-        'text-halo-width': 1,
       },
     })
   }

@@ -16,12 +16,9 @@ import {
   EyeOff,
   Server,
   Camera,
-  Anchor,
-  Crosshair,
-  Ruler,
 } from 'lucide-react'
 
-export type MapStyleKey = 'default' | 'satellite' | 'nasa_gibs' | 'flir' | 'nvg' | 'crt'
+export type MapStyleKey = 'default' | 'satellite' | 'flir' | 'nvg' | 'crt'
 
 interface WorldviewLeftPanelProps {
   visibleLayers: Set<string>
@@ -44,25 +41,15 @@ const LAYERS: { key: string; label: string; color: string; icon: React.ReactNode
   { key: 'sigint', label: 'SIGINT', color: '#10b981', icon: <Radio size={12} /> },
   { key: 'datacenters', label: 'DATACENTERS', color: '#6366f1', icon: <Server size={12} /> },
   { key: 'cctv', label: 'CCTV', color: '#78716c', icon: <Camera size={12} /> },
-  { key: 'carriers', label: 'CARRIERS', color: '#1e3a5f', icon: <Anchor size={12} /> },
-  { key: 'gps_jamming', label: 'GPS JAMMING', color: '#ef4444', icon: <Radio size={12} /> },
-  { key: 'ukraine', label: 'UKRAINE FRONT', color: '#fbbf24', icon: <Crosshair size={12} /> },
 ]
 
 const MAP_STYLES: { key: MapStyleKey; label: string }[] = [
   { key: 'default', label: 'DEFAULT' },
   { key: 'satellite', label: 'SATELLITE' },
-  { key: 'nasa_gibs', label: 'NASA' },
   { key: 'flir', label: 'FLIR' },
   { key: 'nvg', label: 'NVG' },
   { key: 'crt', label: 'CRT' },
 ]
-
-export const BASEMAP_URLS: Record<string, string> = {
-  default: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  nasa_gibs: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
-}
 
 function freshnessColor(ts: string): string {
   if (!ts) return '#ef4444'
@@ -184,7 +171,7 @@ export default function WorldviewLeftPanel({
               <h3 className="text-[10px] font-mono uppercase tracking-widest text-gray-500 mb-2">
                 MAP STYLE
               </h3>
-              <div className="grid grid-cols-6 gap-1">
+              <div className="grid grid-cols-5 gap-1">
                 {MAP_STYLES.map((style) => (
                   <button
                     key={style.key}
@@ -196,39 +183,6 @@ export default function WorldviewLeftPanel({
                     }`}
                   >
                     {style.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Imagery */}
-            <div className="px-3 py-2 border-b border-gray-800">
-              <h3 className="text-[10px] font-mono uppercase tracking-widest text-gray-500 mb-2">
-                IMAGERY
-              </h3>
-              <div className="space-y-1">
-                {([
-                  { key: 'default' as MapStyleKey, label: 'CartoDB Dark Matter' },
-                  { key: 'satellite' as MapStyleKey, label: 'Esri World Imagery' },
-                  { key: 'nasa_gibs' as MapStyleKey, label: 'NASA GIBS (MODIS Terra)' },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => onSetMapStyle(opt.key)}
-                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-left transition-colors ${
-                      mapStyle === opt.key
-                        ? 'bg-cyan-950/40 text-cyan-400'
-                        : 'text-gray-500 hover:bg-gray-900 hover:text-gray-400'
-                    }`}
-                  >
-                    <div
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{
-                        backgroundColor: mapStyle === opt.key ? '#06b6d4' : '#374151',
-                        boxShadow: mapStyle === opt.key ? '0 0 6px #06b6d4' : 'none',
-                      }}
-                    />
-                    <span className="text-[11px] font-mono">{opt.label}</span>
                   </button>
                 ))}
               </div>

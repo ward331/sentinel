@@ -1,7 +1,7 @@
 {
   "name": "sentinel-watchtower",
   "private": true,
-  "version": "4.5.0",
+  "version": "4.0.0",
   "description": "SENTINEL V4 — Shadowbroker-style OSINT intelligence dashboard with MapLibre GL",
   "type": "module",
   "scripts": {
