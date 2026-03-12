@@ -1,15 +1,23 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { getConfig, clearConfig, fetchEvents, fetchSignalBoard, fetchCorrelations, fetchHealth, sseUrl } from './api/client'
 import { SetupWizard } from './components/Setup/SetupWizard'
 import { Header, type View } from './components/Layout/Header'
 import { EventDetail } from './components/Layout/EventDetail'
-import { EventFeed } from './components/Feed/EventFeed'
 import WorldviewLeftPanel, { type MapStyleKey } from './components/Panels/WorldviewLeftPanel'
+import WorldviewRightPanel from './components/Panels/WorldviewRightPanel'
+import FindLocateBar from './components/Panels/FindLocateBar'
+import StatusBar from './components/Panels/StatusBar'
+import MarketsPanel from './components/Panels/MarketsPanel'
 import MaplibreViewer from './components/Map/MaplibreViewer'
 import { ProviderHealth } from './components/Health/ProviderHealth'
 import { AlertRules } from './components/Alerts/AlertRules'
 import { SettingsPage } from './components/Settings/SettingsPage'
+import { SignalBoard as SignalBoardView } from './components/Intel/SignalBoard'
+import { IntelBriefing } from './components/Intel/IntelBriefing'
+import { NewsFeed } from './components/Intel/NewsFeed'
+import { CorrelationList } from './components/Intel/CorrelationList'
+import { FinancialDashboard } from './components/Financial/FinancialDashboard'
+import { OsintBrowser } from './components/OSINT/OsintBrowser'
 import type { SentinelEvent, EventFilters, SignalBoard, CorrelationFlash, HealthResponse } from './types/sentinel'
 import type { LiveData } from './types/livedata'
 
@@ -71,7 +79,6 @@ function App() {
   ]))
   const [flyTo, setFlyTo] = useState<[number, number] | null>(null)
   const [mouseCoords, setMouseCoords] = useState<[number, number] | null>(null)
-  const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [currentView, setCurrentView] = useState<View>('map')
   const [isConnected, setIsConnected] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -281,31 +288,22 @@ function App() {
               isConnected={isConnected}
             />
 
-            {/* Right panel (absolute overlay) */}
-            <div
-              className={`absolute top-0 right-0 h-full z-20 transition-all duration-200 ${
-                rightPanelOpen ? 'w-80' : 'w-0'
-              }`}
-            >
-              {rightPanelOpen && (
-                <div className="h-full w-80 bg-gray-950/95 border-l border-gray-800 backdrop-blur-sm overflow-hidden flex flex-col">
-                  <EventFeed
-                    events={events}
-                    onSelectEvent={handleSelectEvent}
-                    loading={loading}
-                  />
-                </div>
-              )}
-              {/* Right panel toggle */}
-              <button
-                onClick={() => setRightPanelOpen(prev => !prev)}
-                className={`absolute top-1/2 -translate-y-1/2 ${
-                  rightPanelOpen ? '-left-6' : '-left-6'
-                } w-6 h-12 bg-gray-950 border border-gray-800 border-r-0 rounded-l flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-gray-900 transition-all z-30`}
-              >
-                {rightPanelOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-              </button>
-            </div>
+            {/* Find/Locate bar */}
+            <FindLocateBar onFlyTo={setFlyTo} />
+
+            {/* Right panel (WorldviewRightPanel with tabs) */}
+            <WorldviewRightPanel
+              events={events}
+              onSelectEvent={handleSelectEvent}
+              signalBoard={signalBoard}
+              correlations={correlations}
+              news={liveData?.news || []}
+              kiwisdr={liveData?.kiwisdr || []}
+              onFlyTo={setFlyTo}
+            />
+
+            {/* Markets floating widget */}
+            <MarketsPanel financial={liveData?.financial || null} />
 
             {/* Correlation flashes overlay */}
             {correlations.length > 0 && (
@@ -349,14 +347,19 @@ function App() {
               <EventDetail event={selectedEvent} onClose={() => setSelectedEvent(null)} />
             )}
 
-            {/* Mouse coordinates */}
-            {mouseCoords && (
-              <div className="absolute bottom-2 right-[340px] z-10 px-2 py-1 bg-gray-950/80 rounded border border-gray-800">
-                <span className="text-[9px] font-mono text-gray-500 tabular-nums">
-                  {mouseCoords[1].toFixed(4)}, {mouseCoords[0].toFixed(4)}
-                </span>
-              </div>
-            )}
+          </div>
+        ) : currentView === 'intel' ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+              <SignalBoardView />
+              <IntelBriefing />
+              <NewsFeed />
+              <CorrelationList />
+            </div>
+          </div>
+        ) : currentView === 'financial' ? (
+          <div className="flex-1 overflow-y-auto">
+            <FinancialDashboard />
           </div>
         ) : currentView === 'health' ? (
           <div className="flex-1 overflow-y-auto">
@@ -366,6 +369,10 @@ function App() {
           <div className="flex-1 overflow-y-auto">
             <AlertRules />
           </div>
+        ) : currentView === 'osint' ? (
+          <div className="flex-1 overflow-y-auto">
+            <OsintBrowser />
+          </div>
         ) : currentView === 'settings' ? (
           <div className="flex-1 overflow-y-auto">
             <SettingsPage onDisconnect={() => { clearConfig(); setConfigured(false) }} />
@@ -374,44 +381,15 @@ function App() {
       </div>
 
       {/* Status bar */}
-      <div className="h-6 min-h-6 bg-gray-950 border-t border-gray-800 flex items-center px-3 justify-between shrink-0 select-none">
-        <div className="flex items-center gap-3">
-          <span className="text-[9px] font-mono text-gray-600 uppercase">
-            Events: <span className="text-gray-400">{events.length}</span>
-          </span>
-          {liveData && (
-            <>
-              <span className="text-[9px] font-mono text-gray-600 uppercase">
-                Aircraft: <span className="text-gray-400">{sourceCounts.aircraft}</span>
-              </span>
-              <span className="text-[9px] font-mono text-gray-600 uppercase">
-                Ships: <span className="text-gray-400">{sourceCounts.ships}</span>
-              </span>
-              <span className="text-[9px] font-mono text-gray-600 uppercase">
-                Sats: <span className="text-gray-400">{sourceCounts.satellites}</span>
-              </span>
-            </>
-          )}
-          {correlations.length > 0 && (
-            <span className="text-[9px] font-mono text-orange-500 uppercase">
-              Correlations: {correlations.length}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {health && (
-            <span className={`text-[9px] font-mono uppercase ${
-              health.status === 'healthy' ? 'text-emerald-500' :
-              health.status === 'degraded' ? 'text-yellow-500' : 'text-red-500'
-            }`}>
-              SYS: {health.status}
-            </span>
-          )}
-          <span className="text-[9px] font-mono text-gray-700">
-            SENTINEL V4
-          </span>
-        </div>
-      </div>
+      <StatusBar
+        health={
+          !health || !isConnected ? 'offline' :
+          health.status === 'healthy' ? 'operational' :
+          health.status === 'degraded' ? 'degraded' : 'offline'
+        }
+        mouseCoords={mouseCoords}
+        sourceCounts={sourceCounts}
+      />
     </div>
   )
 }

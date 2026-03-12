@@ -51,7 +51,7 @@ export default function StatusBar({ health, mouseCoords, sourceCounts }: StatusB
   const totalCount = Object.values(sourceCounts).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-950/95 border-t border-gray-800 flex items-center justify-between px-3 z-30 backdrop-blur-sm">
+    <div className="h-6 min-h-6 bg-gray-950 border-t border-gray-800 flex items-center justify-between px-3 shrink-0 select-none">
       {/* Left: System status */}
       <div className="flex items-center gap-2">
         <Icon size={11} className={cfg.color} />

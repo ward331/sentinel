@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Map, Activity, AlertTriangle, Settings } from 'lucide-react'
+import { Map, Activity, AlertTriangle, Settings, Radio, TrendingUp, BookOpen } from 'lucide-react'
 
-export type View = 'map' | 'health' | 'alerts' | 'settings'
+export type View = 'map' | 'intel' | 'financial' | 'health' | 'alerts' | 'osint' | 'settings'
 
 interface HeaderProps {
   currentView: View
@@ -11,8 +11,11 @@ interface HeaderProps {
 
 const TABS: { key: View; label: string; icon: React.ReactNode }[] = [
   { key: 'map', label: 'MAP', icon: <Map size={11} /> },
+  { key: 'intel', label: 'INTEL', icon: <Radio size={11} /> },
+  { key: 'financial', label: 'FINANCIAL', icon: <TrendingUp size={11} /> },
   { key: 'health', label: 'HEALTH', icon: <Activity size={11} /> },
   { key: 'alerts', label: 'ALERTS', icon: <AlertTriangle size={11} /> },
+  { key: 'osint', label: 'OSINT', icon: <BookOpen size={11} /> },
   { key: 'settings', label: 'SETTINGS', icon: <Settings size={11} /> },
 ]
 
