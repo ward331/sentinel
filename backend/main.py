@@ -128,12 +128,19 @@ async def get_all_live_data():
 @app.get("/api/live-data/fast")
 async def get_fast_data(request: Request, response: Response):
     """High-frequency data (flights, ships, GPS jamming) with ETag caching."""
+    # Split flights by category to match frontend LiveData interface
+    all_flights = latest_data.get("flights", [])
+    commercial = [f for f in all_flights if f.get("category") == "commercial"]
+    military = [f for f in all_flights if f.get("category") == "military"]
+    private = [f for f in all_flights if f.get("category") == "private"]
     data = {
-        "flights": latest_data.get("flights", []),
+        "commercial_flights": commercial,
+        "military_flights": military,
+        "private_flights": private,
         "ships": get_vessels(),
-        "_timestamps": {
+        "freshness": {
             k: v for k, v in source_timestamps.items()
-            if k in ("flights",)
+            if k in ("flights", "ships")
         },
     }
     return _etag_response(request, response, data)
@@ -142,13 +149,21 @@ async def get_fast_data(request: Request, response: Response):
 @app.get("/api/live-data/slow")
 async def get_slow_data(request: Request, response: Response):
     """Low-frequency data with ETag caching."""
-    slow_keys = [
-        "satellites", "earthquakes", "fires", "gdelt", "space_weather",
-        "internet_outages", "news", "kiwisdr", "datacenters", "financial",
-    ]
-    data = {k: latest_data.get(k, []) for k in slow_keys}
-    data["_timestamps"] = {
-        k: v for k, v in source_timestamps.items() if k in slow_keys
+    data = {
+        "satellites": latest_data.get("satellites", []),
+        "earthquakes": latest_data.get("earthquakes", []),
+        "firms_fires": latest_data.get("fires", []),
+        "gdelt": latest_data.get("gdelt", []),
+        "space_weather": latest_data.get("space_weather"),
+        "internet_outages": latest_data.get("internet_outages", []),
+        "news": latest_data.get("news", []),
+        "kiwisdr": latest_data.get("kiwisdr", []),
+        "datacenters": latest_data.get("datacenters", []),
+        "financial": latest_data.get("financial"),
+        "freshness": {
+            k: v for k, v in source_timestamps.items()
+            if k not in ("flights", "ships")
+        },
     }
     return _etag_response(request, response, data)
 

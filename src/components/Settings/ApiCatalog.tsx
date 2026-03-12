@@ -31,7 +31,7 @@ export function ApiCatalog() {
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(FEATURED_CATS.slice(0, 3)))
 
   useEffect(() => {
-    fetch('/api-catalog.json')
+    fetch('/catalog.json')
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
       .catch(() => setLoading(false))

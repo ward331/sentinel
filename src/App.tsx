@@ -13,7 +13,8 @@ import { SettingsPage } from './components/Settings/SettingsPage'
 import type { SentinelEvent, EventFilters, SignalBoard, CorrelationFlash, HealthResponse } from './types/sentinel'
 import type { LiveData } from './types/livedata'
 
-const DATA_FETCHER_URL = 'http://127.0.0.1:8000'
+// Proxied through Vite: /osint/* → http://127.0.0.1:8000/api/*
+const DATA_FETCHER_BASE = '/osint'
 
 // ─── SSE with batching ─────────────────────────────────────────────────
 function useThrottledSSE(enabled: boolean, onEvent: (event: SentinelEvent) => void) {
@@ -162,15 +163,18 @@ function App() {
   useEffect(() => {
     const loadFast = async () => {
       try {
-        const res = await fetch(`${DATA_FETCHER_URL}/api/live-data/fast`)
+        const res = await fetch(`${DATA_FETCHER_BASE}/live-data/fast`)
         const data = await res.json()
         setLiveData(prev => ({ ...prev, ...data } as LiveData))
       } catch (e) { console.warn('[V4] Data fetcher fast poll failed:', e) }
     }
     const loadSlow = async () => {
       try {
-        const res = await fetch(`${DATA_FETCHER_URL}/api/live-data/slow`)
+        const res = await fetch(`${DATA_FETCHER_BASE}/live-data/slow`)
         const data = await res.json()
+        // Unwrap single-element arrays for space_weather and financial
+        if (Array.isArray(data.space_weather)) data.space_weather = data.space_weather[0] || null
+        if (Array.isArray(data.financial)) data.financial = data.financial[0] || null
         setLiveData(prev => ({ ...prev, ...data } as LiveData))
       } catch (e) { console.warn('[V4] Data fetcher slow poll failed:', e) }
     }
