@@ -34,10 +34,18 @@ function countBadgeColor(eventCount: number): string {
   return 'bg-emerald-400/20 text-emerald-400'
 }
 
-export function CorrelationList({ onSelect }: { onSelect?: (c: CorrelationFlash) => void }) {
-  const [correlations, setCorrelations] = useState<CorrelationFlash[]>([])
+export function CorrelationList({ onSelect, initialData }: { onSelect?: (c: CorrelationFlash) => void; initialData?: CorrelationFlash[] }) {
+  const [correlations, setCorrelations] = useState<CorrelationFlash[]>(initialData ?? [])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialData)
+
+  useEffect(() => {
+    if (initialData) {
+      setCorrelations(initialData)
+      setLoading(false)
+      setError(null)
+    }
+  }, [initialData])
 
   const load = async () => {
     try {
@@ -45,17 +53,20 @@ export function CorrelationList({ onSelect }: { onSelect?: (c: CorrelationFlash)
       setCorrelations(res.correlations)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch correlations')
+      if (!correlations.length && !initialData?.length) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch correlations')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    if (initialData) return
     load()
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [!!initialData])
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 flex flex-col">

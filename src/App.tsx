@@ -351,15 +351,15 @@ function App() {
         ) : currentView === 'intel' ? (
           <div className="flex-1 overflow-y-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
-              <SignalBoardView />
-              <IntelBriefing />
-              <NewsFeed />
-              <CorrelationList />
+              <SignalBoardView initialData={signalBoard} />
+              <IntelBriefing events={events} news={liveData?.news || []} />
+              <NewsFeed initialItems={liveData?.news || []} />
+              <CorrelationList initialData={correlations} />
             </div>
           </div>
         ) : currentView === 'financial' ? (
           <div className="flex-1 overflow-y-auto">
-            <FinancialDashboard />
+            <FinancialDashboard data={liveData?.financial || null} />
           </div>
         ) : currentView === 'health' ? (
           <div className="flex-1 overflow-y-auto">

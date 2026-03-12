@@ -43,10 +43,19 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export function SignalBoard() {
-  const [data, setData] = useState<SignalBoardData | null>(null)
+export function SignalBoard({ initialData }: { initialData?: SignalBoardData | null }) {
+  const [data, setData] = useState<SignalBoardData | null>(initialData ?? null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialData)
+
+  // Sync prop changes
+  useEffect(() => {
+    if (initialData) {
+      setData(initialData)
+      setLoading(false)
+      setError(null)
+    }
+  }, [initialData])
 
   const load = async () => {
     try {
@@ -54,17 +63,22 @@ export function SignalBoard() {
       setData(board)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch signal board')
+      // If we have prop data, silently ignore fetch errors
+      if (!data && !initialData) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch signal board')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // Only self-fetch if no prop data provided
+    if (initialData) return
     load()
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [!!initialData])
 
   if (loading) {
     return (

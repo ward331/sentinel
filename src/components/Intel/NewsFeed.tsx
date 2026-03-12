@@ -27,11 +27,38 @@ function truthColor(score: number): string {
   return 'text-red-400'
 }
 
-export function NewsFeed() {
+interface NewsFeedProps {
+  initialItems?: Array<{ title: string; link: string; source: string; published: string; summary: string; lat?: number; lon?: number }>
+}
+
+export function NewsFeed({ initialItems }: NewsFeedProps = {}) {
   const [items, setItems] = useState<NewsItem[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialItems?.length)
   const [categoryFilter, setCategoryFilter] = useState<string>('')
+
+  // Convert Python backend news to NewsItem format
+  useEffect(() => {
+    if (initialItems?.length) {
+      const mapped: NewsItem[] = initialItems.map((n, i) => ({
+        id: i,
+        title: n.title,
+        url: n.link,
+        description: n.summary || '',
+        source_name: n.source || 'Unknown',
+        source_category: '',
+        pub_date: n.published || new Date().toISOString(),
+        ingested_at: new Date().toISOString(),
+        relevance_score: 0.5,
+        truth_score: 0.5,
+        lat: n.lat,
+        lon: n.lon,
+      }))
+      setItems(mapped)
+      setLoading(false)
+      setError(null)
+    }
+  }, [initialItems])
 
   const load = async () => {
     try {
@@ -40,15 +67,18 @@ export function NewsFeed() {
       setItems(res.items)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch news')
+      if (!items.length && !initialItems?.length) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch news')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    if (initialItems?.length) return
     load()
-  }, [])
+  }, [!!initialItems?.length])
 
   const categories = Array.from(new Set(items.map((i) => i.source_category).filter(Boolean))).sort()
 
