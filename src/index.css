@@ -1,11 +1,37 @@
-@import "tailwindcss";
 @import "maplibre-gl/dist/maplibre-gl.css";
+@import "tailwindcss";
 
 :root {
   color-scheme: dark;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Ensure MapLibre elements survive Tailwind v4 preflight reset */
+.maplibregl-map {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  position: absolute !important;
+}
+.maplibregl-popup {
+  z-index: 50 !important;
+}
+.sentinel-popup .maplibregl-popup-content {
+  background: #111827 !important;
+  color: #d1d5db !important;
+  border: 1px solid #374151 !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+}
+.sentinel-popup .maplibregl-popup-tip {
+  border-top-color: #374151 !important;
+}
 
 body {
   background: #030712;

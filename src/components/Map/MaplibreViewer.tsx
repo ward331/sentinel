@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
+// CSS imported in index.css (must load before Tailwind)
 import type { SentinelEvent, CorrelationFlash } from '../../types/sentinel'
 import type { LiveData, Aircraft, Vessel, Satellite, Earthquake, Fire, GdeltEvent, KiwiSDR } from '../../types/livedata'
 

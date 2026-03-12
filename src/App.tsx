@@ -263,7 +263,7 @@ function App() {
         {currentView === 'map' ? (
           <div className="flex-1 relative overflow-hidden">
             {/* Full-screen map area */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 z-0">
               <MaplibreViewer
                 events={events}
                 liveData={liveData}
