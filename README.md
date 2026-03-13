@@ -1,185 +1,158 @@
-# SENTINEL
+# SENTINEL Watchtower V4.5.0
 
-Real-time global event monitoring in a single binary. Earthquakes, conflicts, flights, weather, cyber threats, financial markets -- all on one dashboard.
-
-<!-- ![SENTINEL Dashboard](docs/screenshot.png) -->
+Real-time geospatial OSINT intelligence dashboard. Tracks aircraft, satellites, earthquakes, wildfires, weather, carrier strike groups, GPS jamming zones, Ukraine frontline positions, and global CCTV feeds on an interactive map.
 
 ---
 
-## Key Features
+## Stack
 
-- **Single binary, zero config** -- download and run, no database server or dependencies
-- **33+ data providers** -- USGS, GDACS, NOAA, OpenSky, GDELT, WHO, NASA FIRMS, and more
-- **Zero API keys required** -- all Tier 0 providers work out of the box
-- **Signal Board** -- DEFCON-style threat posture across 5 domains
-- **Correlation Flash** -- automatic multi-source incident detection
-- **Truth Score** -- cross-source confirmation scoring (1-5)
-- **Anomaly Detection** -- rolling baseline spike detection
-- **Dead Reckoning** -- projected asset positions when signal is lost
-- **6 notification channels** -- Telegram, Slack, Discord, Email, ntfy, Pushover
-- **Alert rules** -- configurable conditions and actions per event
-- **Real-time SSE streaming** -- live events pushed to all connected clients
-- **Mobile-first design** -- responsive dashboard with PWA support
-- **Cross-platform** -- Linux, macOS, Windows, ARM (Raspberry Pi)
-- **< 80 MB RAM** -- lightweight enough for a Raspberry Pi
+| Layer | Tech |
+|-------|------|
+| Frontend | React 19, TypeScript 5.9, Vite 7, Tailwind 4, MapLibre GL JS |
+| Backend | Python FastAPI, APScheduler, httpx |
+| Map tiles | CartoDB Dark Matter (default), Esri World Imagery, NASA GIBS MODIS Terra |
+
+---
+
+## Features
+
+### Map Layers
+
+| Layer | Source | Refresh |
+|-------|--------|---------|
+| Aircraft | [adsb.lol](https://adsb.lol) ADS-B | 60s |
+| Satellites | [CelesTrak](https://celestrak.org) TLE/SGP4 | 5min |
+| Earthquakes | [USGS](https://earthquake.usgs.gov) M2.5+ | 5min |
+| Wildfires | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov) | 15min |
+| Weather alerts | [NWS](https://api.weather.gov) | 5min |
+| GDELT news | [GDELT](https://api.gdeltproject.org) geolocated events | 5min |
+| Carrier Strike Groups | GDELT news analysis (11 US Navy carriers) | 12h |
+| GPS Jamming Zones | ADS-B NAC-P analysis, 2-degree grid heatmap | 60s |
+| Ukraine Frontline | [DeepState Map](https://deepstatemap.live) GeoJSON | 30min |
+| CCTV Cameras | [TfL JamCams](https://api.tfl.gov.uk) + [NYC DOT](https://webcams.nyctmc.org) | 5min |
+
+### Tools & Interactions
+
+- **Flight trails** -- Accumulated breadcrumb trails per aircraft
+- **Measurement tool** -- Click-to-measure with haversine distance and bearing
+- **Region dossier** -- Right-click any point for country info via Wikipedia
+- **Basemap switcher** -- CartoDB Dark, Esri Imagery, NASA GIBS MODIS Terra
+- **Layer toggles** -- Individual visibility control per data source
+- **CCTV viewer** -- Floating panel with auto-refreshing camera feeds
+- **Find/Locate bar** -- Search and pan to entities
+- **Intel briefing** -- Aggregated OSINT news and signal board
+- **Financial dashboard** -- Market data panel
 
 ---
 
 ## Quick Start
 
+### Backend
+
 ```bash
-# 1. Download
-curl -LO https://github.com/openclaw/sentinel-backend/releases/latest/download/sentinel-linux-amd64
-chmod +x sentinel-linux-amd64
-
-# 2. Run
-./sentinel-linux-amd64
-
-# 3. Open
-open http://localhost:8080
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Or build from source:
+The backend runs scheduled fetchers via APScheduler. No external cron needed.
+
+### Frontend
 
 ```bash
-git clone https://github.com/openclaw/sentinel-backend.git
-cd sentinel-backend
-make build
-./bin/sentinel-linux-amd64
+npm install
+npm run dev        # Development server (port 5173)
+npm run build      # Production build
+npm run preview    # Preview production build
+```
+
+The frontend expects the backend API at `http://localhost:8000` (configured in `src/api/client.ts`).
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/live-data` | GET | All data sources (full payload) |
+| `/api/live-data/fast` | GET | Aircraft + GPS jamming (high-frequency polling) |
+| `/api/live-data/carriers` | GET | Carrier strike group positions |
+| `/api/live-data/cctv` | GET | CCTV camera feeds |
+| `/api/live-data/ukraine` | GET | Ukraine frontline GeoJSON |
+| `/api/events` | GET | GDELT news events |
+| `/api/intel/news` | GET | Aggregated intel news feed |
+| `/api/intel/signals` | GET | Signal board entries |
+| `/api/financial/markets` | GET | Market data |
+| `/health` | GET | Backend health check |
+
+All data endpoints support `ETag` / `If-None-Match` for conditional responses.
+
+---
+
+## Project Structure
+
+```
+sentinel-watchtower/
+├── backend/
+│   ├── main.py                      # FastAPI app + API endpoints
+│   ├── requirements.txt
+│   ├── config/
+│   │   └── news_feeds.json          # RSS feed configuration
+│   └── services/
+│       ├── data_fetcher.py          # All data source fetchers + schedulers
+│       ├── network_utils.py         # HTTP helpers
+│       ├── region_dossier.py        # Wikipedia region lookup
+│       └── ais_stream.py           # AIS vessel tracking (experimental)
+├── src/
+│   ├── App.tsx                      # App shell, data polling, state management
+│   ├── api/client.ts                # Backend API configuration
+│   ├── types/
+│   │   ├── livedata.ts              # Data interfaces (Aircraft, Satellite, CarrierGroup, etc.)
+│   │   └── sentinel.ts             # App-level types
+│   ├── components/
+│   │   ├── Map/
+│   │   │   └── MaplibreViewer.tsx   # Map with all layers, interactions, tools
+│   │   ├── Panels/
+│   │   │   ├── WorldviewLeftPanel.tsx    # Layer toggles + basemap switcher
+│   │   │   ├── WorldviewRightPanel.tsx   # Event details sidebar
+│   │   │   ├── CCTVPanel.tsx             # Camera feed viewer
+│   │   │   ├── StatusBar.tsx             # Bottom status bar
+│   │   │   ├── FindLocateBar.tsx         # Entity search bar
+│   │   │   ├── MapLegend.tsx             # Map legend overlay
+│   │   │   └── MarketsPanel.tsx          # Financial data panel
+│   │   ├── Intel/                   # Intelligence briefing views
+│   │   ├── Financial/               # Market dashboard
+│   │   └── Feed/                    # Event feed components
+│   └── hooks/
+│       ├── useEvents.ts
+│       └── useSSE.ts
+├── legacy/v4/                       # Archived V4.0 source
+├── package.json
+├── vite.config.ts
+└── tsconfig.json
 ```
 
 ---
 
-## Architecture
+## V4.5.0 Changelog
 
-```
-Data Sources (33+)  -->  Poller  -->  SQLite  -->  REST API / SSE  -->  Dashboard
-                                        |
-                                  Intelligence
-                                  - Correlation
-                                  - Truth Score
-                                  - Anomaly Detection
-                                  - Signal Board
-```
+New features merged from [Shadowbroker](https://github.com/BigBodyCobain/Shadowbroker) concepts + custom additions:
 
-SENTINEL is a single Go binary with an embedded web frontend. It uses SQLite (pure Go, no CGO) for storage and polls data sources on configurable intervals. Events are streamed to clients via Server-Sent Events (SSE).
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full technical breakdown.
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [API Reference](docs/API.md) | Complete REST API documentation |
-| [Provider Catalog](docs/PROVIDERS.md) | All 33+ data providers with endpoints and formats |
-| [Configuration Guide](docs/CONFIGURATION.md) | Config file, CLI flags, notification setup |
-| [Deployment Guide](docs/DEPLOYMENT.md) | Docker, systemd, reverse proxy, Raspberry Pi |
-| [Architecture](docs/ARCHITECTURE.md) | System design, data flow, database schema |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-| [Dependencies](docs/DEPENDENCIES.md) | Go module inventory with licenses |
-| [Changelog](docs/CHANGELOG.md) | Version history |
-| [Known Issues](KNOWN_ISSUES.md) | Current limitations and TODOs |
-
----
-
-## Configuration
-
-SENTINEL works with zero configuration. To customize, create a `config.json`:
-
-```json
-{
-  "server": { "port": 8080, "host": "0.0.0.0" },
-  "providers": {
-    "usgs": { "enabled": true, "interval_seconds": 60 },
-    "opensky": { "enabled": false }
-  },
-  "telegram": {
-    "enabled": true,
-    "bot_token": "your-bot-token",
-    "chat_id": "-1001234567890"
-  }
-}
-```
-
-```bash
-./sentinel --config config.json
-```
-
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for all options.
-
----
-
-## Docker
-
-```bash
-docker build -t sentinel .
-docker run -d -p 8080:8080 -v sentinel-data:/app/data sentinel
-```
-
----
-
-## API
-
-```bash
-# Health check
-curl http://localhost:8080/api/health
-
-# List events
-curl http://localhost:8080/api/events?category=earthquake&limit=10
-
-# SSE stream
-curl -N http://localhost:8080/api/events/stream
-
-# Signal board
-curl http://localhost:8080/api/signal-board
-
-# Search entities
-curl http://localhost:8080/api/entity/search?q=Boeing
-```
-
-See [docs/API.md](docs/API.md) for the complete reference.
-
----
-
-## Building
-
-```bash
-make build            # Linux amd64
-make build-all        # All platforms
-make test             # Run tests
-make smoke            # Build + smoke test
-make docker           # Build Docker image
-make release          # Full release pipeline with checksums
-```
+- Carrier Strike Group tracking (11 US Navy carriers via GDELT news analysis)
+- Ukraine frontline GeoJSON overlay (DeepState Map)
+- CCTV camera feeds with clustered map layer and live viewer panel
+- GPS jamming detection via NAC-P analysis with heatmap visualization
+- Flight trail breadcrumbs per tracked aircraft
+- Measurement tool with haversine distance/bearing
+- Right-click region dossier (country, capital, population via Wikipedia)
+- Basemap switcher (CartoDB Dark, Esri Imagery, NASA GIBS MODIS Terra)
+- 6 new TypeScript interfaces, 4 new Python fetchers, 3 new API endpoints
+- V4.0 source archived to `legacy/v4/`
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-## Contributing
-
-Contributions are welcome.
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Make your changes
-4. Run tests: `make test`
-5. Run the smoke test: `make smoke`
-6. Commit with a clear message
-7. Open a pull request
-
-Please follow Go conventions (`gofmt`, `go vet`) and add tests for new features.
-
-### Adding a New Provider
-
-1. Create `internal/provider/yourprovider.go` implementing the `Provider` interface
-2. Register it in `cmd/sentinel/main.go` inside `initializePoller()`
-3. Add its config to `internal/config/v2config.go` in `ProvidersConfig`
-4. Document it in `docs/PROVIDERS.md`
-5. Add a smoke test case
+Private project.
