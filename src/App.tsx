@@ -313,8 +313,10 @@ function App() {
     const load = async () => {
       try {
         const res = await fetch(`${DATA_FETCHER_BASE}/live-data/carriers`)
+        if (!res.ok) return
         const data = await res.json()
-        setCarriers(data.carriers || data || [])
+        const arr = Array.isArray(data.carriers) ? data.carriers : Array.isArray(data) ? data : []
+        setCarriers(arr)
       } catch (e) { console.warn('[V4] Carriers fetch failed:', e) }
     }
     load()
@@ -327,8 +329,10 @@ function App() {
     const load = async () => {
       try {
         const res = await fetch(`${DATA_FETCHER_BASE}/live-data/cctv`)
+        if (!res.ok) return
         const data = await res.json()
-        setCctv(data.cctv || data || [])
+        const arr = Array.isArray(data.cctv) ? data.cctv : Array.isArray(data) ? data : []
+        setCctv(arr)
       } catch (e) { console.warn('[V4] CCTV fetch failed:', e) }
     }
     load()
@@ -341,8 +345,10 @@ function App() {
     const load = async () => {
       try {
         const res = await fetch(`${DATA_FETCHER_BASE}/live-data/ukraine`)
+        if (!res.ok) return
         const data = await res.json()
-        setUkraineFrontline(data.ukraine_frontline || data || null)
+        const geo = data.ukraine_frontline || (data?.type === 'FeatureCollection' ? data : null)
+        setUkraineFrontline(geo)
       } catch (e) { console.warn('[V4] Ukraine frontline fetch failed:', e) }
     }
     load()
